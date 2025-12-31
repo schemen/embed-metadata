@@ -1,5 +1,6 @@
 import {App, Plugin, PluginSettingTab, Setting} from "obsidian";
 import {TokenStyle} from "./metadata-utils";
+import {MigrationModal} from "./migration-modal";
 
 export interface EmbedMetadataSettings {
 	tokenStyle: TokenStyle;
@@ -160,6 +161,26 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 						this.plugin.settings.hoverEmphasis = value;
 						await this.plugin.saveSettings();
 					});
+			});
+
+		containerEl.createEl("h3", {text: "Migration"});
+
+		new Setting(containerEl)
+			.setName("Migrate from Dataview")
+			.setDesc("Convert backticked `=this.key` tokens to the selected format.")
+			.addButton((button) => {
+				button.setButtonText("Review").onClick(() => {
+					new MigrationModal(this.app, this.plugin, "dataview").open();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Migrate to current syntax")
+			.setDesc("Convert other supported token formats to the selected format.")
+			.addButton((button) => {
+				button.setButtonText("Review").onClick(() => {
+					new MigrationModal(this.app, this.plugin, "otherSyntax").open();
+				});
 			});
 	}
 }
