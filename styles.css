@@ -1,8 +1,38 @@
-/*
+.embed-metadata-bold {
+	font-weight: 600;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.embed-metadata-italic {
+	font-style: italic;
+}
 
-If your plugin does not need CSS, delete this file.
+.embed-metadata-underline {
+	text-decoration: underline;
+	text-decoration-color: var(--embed-metadata-underline-color, currentColor);
+}
 
-*/
+.embed-metadata-highlight {
+	background-color: var(--embed-metadata-highlight-color, var(--text-highlight-bg, #fff59d));
+	border-radius: 2px;
+	padding: 0 2px;
+}
+
+.embed-metadata-hoverable:hover {
+	filter: brightness(1.15);
+}
+
+.embed-metadata-hoverable.embed-metadata-italic:hover {
+	font-style: normal;
+}
+
+.embed-metadata-hoverable:not(.embed-metadata-italic):hover {
+	font-style: italic;
+}
+
+.embed-metadata-hoverable.embed-metadata-bold:hover {
+	font-weight: 400;
+}
+
+.embed-metadata-hoverable:not(.embed-metadata-bold):hover {
+	font-weight: 600;
+}

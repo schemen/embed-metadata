@@ -1,36 +1,165 @@
-import {App, PluginSettingTab, Setting} from "obsidian";
-import MyPlugin from "./main";
+import {App, Plugin, PluginSettingTab, Setting} from "obsidian";
+import {TokenStyle} from "./metadata-utils";
 
-export interface MyPluginSettings {
-	mySetting: string;
+export interface EmbedMetadataSettings {
+	tokenStyle: TokenStyle;
+	bold: boolean;
+	italic: boolean;
+	underline: boolean;
+	underlineColorEnabled: boolean;
+	underlineColor: string;
+	highlight: boolean;
+	highlightColorEnabled: boolean;
+	highlightColor: string;
+	hoverEmphasis: boolean;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
+// Defaults for newly installed or reset settings.
+export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
+	tokenStyle: "brackets",
+	bold: false,
+	italic: false,
+	underline: false,
+	underlineColorEnabled: false,
+	underlineColor: "#000000",
+	highlight: false,
+	highlightColorEnabled: false,
+	highlightColor: "#fff59d",
+	hoverEmphasis: false,
+};
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export type EmbedMetadataPlugin = Plugin & { settings: EmbedMetadataSettings };
 
-	constructor(app: App, plugin: MyPlugin) {
+// Settings UI for the plugin.
+export class EmbedMetadataSettingTab extends PluginSettingTab {
+	private plugin: EmbedMetadataPlugin;
+
+	constructor(app: App, plugin: EmbedMetadataPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
+	// Render the settings form.
 	display(): void {
 		const {containerEl} = this;
-
 		containerEl.empty();
 
+		containerEl.createEl("h3", {text: "General"});
+
 		new Setting(containerEl)
-			.setName('Settings #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
+			.setName("Token format")
+			.setDesc("Choose the syntax used to embed frontmatter values.")
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption("brackets", "[%key]")
+					.addOption("doubleBraces", "{{key}}")
+					.setValue(this.plugin.settings.tokenStyle)
+					.onChange(async (value) => {
+						this.plugin.settings.tokenStyle = value as TokenStyle;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		containerEl.createEl("h3", {text: "Visual aid in Live Preview"});
+
+		new Setting(containerEl)
+			.setName("Bold")
+			.setDesc("Render values in bold.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.bold)
+					.onChange(async (value) => {
+						this.plugin.settings.bold = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Italic")
+			.setDesc("Render values in italics.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.italic)
+					.onChange(async (value) => {
+						this.plugin.settings.italic = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Underline")
+			.setDesc("Underline rendered values.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.underline)
+					.onChange(async (value) => {
+						this.plugin.settings.underline = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Underline color")
+			.setDesc("Override underline color (otherwise uses text color).")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.underlineColorEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.underlineColorEnabled = value;
+						await this.plugin.saveSettings();
+					});
+			})
+			.addColorPicker((picker) => {
+				picker
+					.setValue(this.plugin.settings.underlineColor)
+					.onChange(async (value) => {
+						this.plugin.settings.underlineColor = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Highlight")
+			.setDesc("Highlight rendered values.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.highlight)
+					.onChange(async (value) => {
+						this.plugin.settings.highlight = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Highlight color")
+			.setDesc("Override highlight color (otherwise uses theme highlight).")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.highlightColorEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.highlightColorEnabled = value;
+						await this.plugin.saveSettings();
+					});
+			})
+			.addColorPicker((picker) => {
+				picker
+					.setValue(this.plugin.settings.highlightColor)
+					.onChange(async (value) => {
+						this.plugin.settings.highlightColor = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Hover emphasis")
+			.setDesc("Shift styling slightly on hover in Live Preview.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.hoverEmphasis)
+					.onChange(async (value) => {
+						this.plugin.settings.hoverEmphasis = value;
+						await this.plugin.saveSettings();
+					});
+			});
 	}
 }
