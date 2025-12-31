@@ -24,6 +24,8 @@
 		"jiti": "2.6.1"
 	},
 	"dependencies": {
+		"@codemirror/state": "^6.4.1",
+		"@codemirror/view": "^6.28.2",
 		"obsidian": "latest"
 	}
 }

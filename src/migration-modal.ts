@@ -196,8 +196,7 @@ function replaceOtherSyntax(
 function countRegexMatches(regex: RegExp, content: string): number {
 	let count = 0;
 	regex.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = regex.exec(content)) !== null) {
+	while (regex.exec(content) !== null) {
 		count += 1;
 	}
 	return count;

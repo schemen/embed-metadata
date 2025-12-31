@@ -49,7 +49,9 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 		containerEl.empty();
 
-		containerEl.createEl("h3", {text: "General"});
+		new Setting(containerEl)
+			.setName("Syntax")
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName("Syntax format")
@@ -65,7 +67,9 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					});
 			});
 
-		containerEl.createEl("h3", {text: "Visual aid in Live Preview"});
+		new Setting(containerEl)
+			.setName("Visual aid in live preview")
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName("Bold")
@@ -157,7 +161,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Hover emphasis")
-			.setDesc("Shift styling slightly on hover in Live Preview.")
+			.setDesc("Shift styling slightly on hover in live preview.")
 			.addToggle((toggle) => {
 				toggle
 					.setValue(this.plugin.settings.hoverEmphasis)
@@ -167,10 +171,12 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					});
 			});
 
-		containerEl.createEl("h3", {text: "Migration"});
+		new Setting(containerEl)
+			.setName("Migration")
+			.setHeading();
 
 		new Setting(containerEl)
-			.setName("Migrate from Dataview")
+			.setName("Migrate from dataview")
 			.setDesc("Convert backticked `=this.key` syntax to the selected format.")
 			.addButton((button) => {
 				button.setButtonText("Review").onClick(() => {
