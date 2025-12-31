@@ -20,13 +20,13 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	syntaxStyle: "brackets",
 	bold: false,
 	italic: false,
-	underline: false,
+	underline: true,
 	underlineColorEnabled: false,
 	underlineColor: "#000000",
 	highlight: false,
 	highlightColorEnabled: false,
 	highlightColor: "#fff59d",
-	hoverEmphasis: false,
+	hoverEmphasis: true,
 };
 
 export type EmbedMetadataPlugin = Plugin & { settings: EmbedMetadataSettings };
