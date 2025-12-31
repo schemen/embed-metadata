@@ -26,7 +26,9 @@ The Author called [%author_name] is really funny!
 
 The syntax markers are replaced in reading view and live preview. Source mode keeps
 the syntax as plain text. If a key is missing, the marker is left unchanged.
-Inline code and code blocks are ignored in preview.## Settings
+Inline code and code blocks are ignored in preview.
+
+## Settings
 
 Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
@@ -41,17 +43,14 @@ Note: Obsidian Properties do not support nested properties in Reading view or Li
 If you use nested YAML, use Source mode to view them, or flatten keys (for example,
 `author_name`).
 
-## Settings
-### Syntax used
-Use **Settings → Community plugins → Embed Metadata** to choose the syntax
-format: `[%key]` or `{{key}}`.
+## Migration
 
-### Visual settings
-Visual look options apply in Live Preview:
-- Bold / Italic / Underline toggles
-- Optional underline color override (defaults to text color)
-- Optional highlight with theme color or override
-- Hover emphasis (subtle style shift on hover)
+You can migrate existing notes:
+- **Migrate from dataview** converts dataviews backticked `=this.key` syntax to your selected format.
+- **Migrate to current syntax** converts the other supported syntax formats to the selected one.
+
+Each migration opens a review modal listing matching files with counts. Deselect any
+files you want to skip, then confirm the migration (it edits your files).
 
 ## Autocomplete
 Type the configured opener (`[%` or `{{`) to see a dropdown of frontmatter keys
