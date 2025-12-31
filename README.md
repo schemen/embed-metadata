@@ -3,6 +3,9 @@ Render frontmatter metadata (Obsidian Properties) inside your notes with a light
 
 The intent for developing this is as a lightweight replacement for Dataviews `=this.key` embedded metadata rendering, specifically if [Obsidian Bases](https://help.obsidian.md/bases) cover most everything else.
 
+## Demo
+![demo.web](media/demo.gif)
+
 ## Usage
 Add frontmatter (Properties) to a note:
 
