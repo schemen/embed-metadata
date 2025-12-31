@@ -1,6 +1,6 @@
 // Autocomplete & Suggester for frontmatter keys
 import {Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, TFile} from "obsidian";
-import {collectFrontmatterKeys, getTokenClose, getTriggerRegex} from "./metadata-utils";
+import {collectFrontmatterKeys, getSyntaxClose, getSyntaxTriggerRegex} from "./metadata-utils";
 import {EmbedMetadataPlugin} from "./settings";
 
 export class MetadataSuggest extends EditorSuggest<string> {
@@ -11,7 +11,7 @@ export class MetadataSuggest extends EditorSuggest<string> {
 		this.plugin = plugin;
 	}
 
-	// Start suggesting once the token opener is detected on the current line
+// Start suggesting once the syntax opener is detected on the current line.
 	onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
 		if (!file) {
 			return null;
@@ -19,7 +19,7 @@ export class MetadataSuggest extends EditorSuggest<string> {
 
 		const line = editor.getLine(cursor.line);
 		const prefix = line.slice(0, cursor.ch);
-		const triggerRegex = getTriggerRegex(this.plugin.settings.tokenStyle);
+		const triggerRegex = getSyntaxTriggerRegex(this.plugin.settings.syntaxStyle);
 		const match = prefix.match(triggerRegex);
 		if (!match) {
 			return null;
@@ -57,7 +57,7 @@ export class MetadataSuggest extends EditorSuggest<string> {
 		el.setText(value);
 	}
 
-	// Insert the selected key and close the token if needed
+	// Insert the selected key and close the syntax marker if needed.
 	selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
 		if (!this.context) {
 			return;
@@ -65,7 +65,7 @@ export class MetadataSuggest extends EditorSuggest<string> {
 
 		const editor = this.context.editor;
 		const lineText = editor.getLine(this.context.start.line);
-		const close = getTokenClose(this.plugin.settings.tokenStyle);
+		const close = getSyntaxClose(this.plugin.settings.syntaxStyle);
 		const nextText = lineText.slice(this.context.end.ch, this.context.end.ch + close.length);
 		const hasClosing = nextText === close;
 		const replacement = value + (hasClosing ? "" : close);

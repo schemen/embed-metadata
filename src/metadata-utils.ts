@@ -1,23 +1,27 @@
 // Utils for all other modules
 
-// Token parsing and frontmatter resolution utilities.
-export type TokenStyle = "brackets" | "doubleBraces";
+// Syntax parsing and frontmatter resolution utilities.
+export type SyntaxStyle = "brackets" | "doubleBraces";
 
-// Get the token information for the selected style.
-export function getTokenOpen(style: TokenStyle): string {
+// Get the syntax opener for the selected style.
+export function getSyntaxOpen(style: SyntaxStyle): string {
 	return style === "doubleBraces" ? "{{" : "[%";
 }
-export function getTokenClose(style: TokenStyle): string {
+
+// Get the syntax closer for the selected style.
+export function getSyntaxClose(style: SyntaxStyle): string {
 	return style === "doubleBraces" ? "}}" : "]";
 }
-export function getTokenRegex(style: TokenStyle): RegExp {
+
+// Regex for matching full syntax markers, including the key.
+export function getSyntaxRegex(style: SyntaxStyle): RegExp {
 	return style === "doubleBraces"
 		? /\{\{([^{}]+)\}\}/g
 		: /\[%([^[\]%]+)\]/g;
 }
 
 // Regex for triggering autocomplete from the current cursor prefix.
-export function getTriggerRegex(style: TokenStyle): RegExp {
+export function getSyntaxTriggerRegex(style: SyntaxStyle): RegExp {
 	return style === "doubleBraces"
 		? /\{\{([A-Za-z0-9_.-]*)$/
 		: /\[%([A-Za-z0-9_.-]*)$/;

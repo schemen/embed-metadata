@@ -2,12 +2,12 @@
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
 import {RangeSetBuilder} from "@codemirror/state";
 import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
-import {getTokenRegex, resolveFrontmatterString} from "./metadata-utils";
+import {getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
 import {applyValueStyles} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
 
-// Build the Live Preview view plugin that renders tokens in the editor
+// Build the Live Preview view plugin that renders syntax markers in the editor.
 export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 	return ViewPlugin.fromClass(
 		class {
@@ -29,7 +29,7 @@ export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 	);
 }
 
-// Scan visible ranges and replace tokens with widgets (skipping active edits)
+// Scan visible ranges and replace syntax markers with widgets (skipping active edits).
 function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): DecorationSet {
 	if (!view.state.field(editorLivePreviewField)) {
 		return Decoration.none;
@@ -48,14 +48,14 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 
 	const builder = new RangeSetBuilder<Decoration>();
 	const selectionRanges = view.state.selection.ranges;
-	const tokenRegex = getTokenRegex(plugin.settings.tokenStyle);
+	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 
 	for (const range of view.visibleRanges) {
 		const text = view.state.doc.sliceString(range.from, range.to);
-		tokenRegex.lastIndex = 0;
+		syntaxRegex.lastIndex = 0;
 		let match: RegExpExecArray | null;
 
-		while ((match = tokenRegex.exec(text)) !== null) {
+		while ((match = syntaxRegex.exec(text)) !== null) {
 			const start = range.from + match.index;
 			const end = start + match[0].length;
 
@@ -106,7 +106,7 @@ class MetadataWidget extends WidgetType {
 		this.plugin = plugin;
 	}
 
-	// Render the replacement widget node for a single token
+	// Render the replacement widget node for a single syntax marker.
 	toDOM(): HTMLElement {
 		const span = document.createElement("span");
 		renderInlineMarkdown(this.plugin.app, this.sourcePath, span, this.value, this.plugin);

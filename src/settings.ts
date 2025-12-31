@@ -1,9 +1,9 @@
 import {App, Plugin, PluginSettingTab, Setting} from "obsidian";
-import {TokenStyle} from "./metadata-utils";
+import {SyntaxStyle} from "./metadata-utils";
 import {MigrationModal} from "./migration-modal";
 
 export interface EmbedMetadataSettings {
-	tokenStyle: TokenStyle;
+	syntaxStyle: SyntaxStyle;
 	bold: boolean;
 	italic: boolean;
 	underline: boolean;
@@ -17,7 +17,7 @@ export interface EmbedMetadataSettings {
 
 // Defaults for newly installed or reset settings.
 export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
-	tokenStyle: "brackets",
+	syntaxStyle: "brackets",
 	bold: false,
 	italic: false,
 	underline: false,
@@ -48,15 +48,15 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 		containerEl.createEl("h3", {text: "General"});
 
 		new Setting(containerEl)
-			.setName("Token format")
+			.setName("Syntax format")
 			.setDesc("Choose the syntax used to embed frontmatter values.")
 			.addDropdown((dropdown) => {
 				dropdown
 					.addOption("brackets", "[%key]")
 					.addOption("doubleBraces", "{{key}}")
-					.setValue(this.plugin.settings.tokenStyle)
+					.setValue(this.plugin.settings.syntaxStyle)
 					.onChange(async (value) => {
-						this.plugin.settings.tokenStyle = value as TokenStyle;
+						this.plugin.settings.syntaxStyle = value as SyntaxStyle;
 						await this.plugin.saveSettings();
 					});
 			});
@@ -167,7 +167,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Migrate from Dataview")
-			.setDesc("Convert backticked `=this.key` tokens to the selected format.")
+			.setDesc("Convert backticked `=this.key` syntax to the selected format.")
 			.addButton((button) => {
 				button.setButtonText("Review").onClick(() => {
 					new MigrationModal(this.app, this.plugin, "dataview").open();
@@ -176,7 +176,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Migrate to current syntax")
-			.setDesc("Convert other supported token formats to the selected format.")
+			.setDesc("Convert other supported syntax formats to the selected format.")
 			.addButton((button) => {
 				button.setButtonText("Review").onClick(() => {
 					new MigrationModal(this.app, this.plugin, "otherSyntax").open();

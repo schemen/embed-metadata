@@ -24,11 +24,11 @@ We recommend using those tags: [%tags]
 The Author called [%author_name] is really funny!
 ```
 
-The tokens are replaced in reading view and live preview. Source mode keeps
-the token as plain text. If a key is missing, the token is left unchanged.
+The syntax markers are replaced in reading view and live preview. Source mode keeps
+the syntax as plain text. If a key is missing, the marker is left unchanged.
 Inline code and code blocks are ignored in preview.## Settings
 
-Use **Settings → Community plugins → Embed Metadata** to choose the token
+Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
 
 Visual look options apply in Live Preview:
@@ -43,7 +43,7 @@ If you use nested YAML, use Source mode to view them, or flatten keys (for examp
 
 ## Settings
 ### Syntax used
-Use **Settings → Community plugins → Embed Metadata** to choose the token
+Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
 
 ### Visual settings

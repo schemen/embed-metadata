@@ -1,10 +1,10 @@
-// Reading view renderer that replaces tokens in preview DOM.
+// Reading view renderer that replaces syntax markers in the preview DOM.
 import {TFile} from "obsidian";
-import {getTokenOpen, getTokenRegex, resolveFrontmatterString} from "./metadata-utils";
+import {getSyntaxOpen, getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
-// Render tokens in Reading view by post-processing the preview DOM.
+// Render syntax markers in Reading view by post-processing the preview DOM.
 export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 	plugin.registerMarkdownPostProcessor((el, ctx) => {
 		if (el.closest(".markdown-source-view.mod-cm6") || el.closest(".cm-editor")) {
@@ -25,11 +25,11 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 		}
 
 		const doc = el.ownerDocument;
-		const tokenOpen = getTokenOpen(plugin.settings.tokenStyle);
-		const tokenRegex = getTokenRegex(plugin.settings.tokenStyle);
+		const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
+		const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 		const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
 			acceptNode(node) {
-				if (!node.nodeValue || !node.nodeValue.includes(tokenOpen)) {
+				if (!node.nodeValue || !node.nodeValue.includes(syntaxOpen)) {
 					return NodeFilter.FILTER_SKIP;
 				}
 
@@ -50,12 +50,12 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 		}
 
 		for (const textNode of textNodes) {
-			replaceTokensInTextNode(
+			replaceSyntaxInTextNode(
 				textNode,
 				(key) => resolveFrontmatterString(frontmatter, key),
 				doc,
-				tokenRegex,
-				tokenOpen,
+				syntaxRegex,
+				syntaxOpen,
 				ctx.sourcePath ?? "",
 				plugin
 			);
@@ -63,28 +63,28 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 	});
 }
 
-// Replace inline tokens in a single text node with rendered spans.
-function replaceTokensInTextNode(
+// Replace inline syntax markers in a single text node with rendered spans.
+function replaceSyntaxInTextNode(
 	textNode: Text,
 	resolveValue: (key: string) => string | null,
 	doc: Document,
-	tokenRegex: RegExp,
-	tokenOpen: string,
+	syntaxRegex: RegExp,
+	syntaxOpen: string,
 	sourcePath: string,
 	plugin: EmbedMetadataPlugin
 ): void {
 	const text = textNode.nodeValue ?? "";
-	if (!text.includes(tokenOpen)) {
+	if (!text.includes(syntaxOpen)) {
 		return;
 	}
 
-	tokenRegex.lastIndex = 0;
+	syntaxRegex.lastIndex = 0;
 	let match: RegExpExecArray | null;
 	let lastIndex = 0;
 	const fragment = doc.createDocumentFragment();
 	let didReplace = false;
 
-	while ((match = tokenRegex.exec(text)) !== null) {
+	while ((match = syntaxRegex.exec(text)) !== null) {
 		const before = text.slice(lastIndex, match.index);
 		if (before) {
 			fragment.append(before);
