@@ -29,7 +29,11 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	hoverEmphasis: true,
 };
 
-export type EmbedMetadataPlugin = Plugin & { settings: EmbedMetadataSettings };
+// Satisfy linter.
+export type EmbedMetadataPlugin = Plugin & {
+	settings: EmbedMetadataSettings;
+	saveSettings: () => Promise<void>;
+};
 
 // Settings UI for the plugin.
 export class EmbedMetadataSettingTab extends PluginSettingTab {
