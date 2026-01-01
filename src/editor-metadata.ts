@@ -1,25 +1,70 @@
 // Live Preview renderer using CodeMirror decorations
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
-import {RangeSetBuilder} from "@codemirror/state";
+import {RangeSetBuilder, Text} from "@codemirror/state";
 import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
-import {getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
+import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
-import {applyValueStyles} from "./metadata-style";
+import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
+
+type LineMarker = {
+	from: number;
+	to: number;
+	key: string;
+};
+
+type LineMarkers = {
+	text: string;
+	markers: LineMarker[];
+};
 
 // Build the Live Preview view plugin that renders syntax markers in the editor.
 export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			private cursorMarkerKey: string;
+			private lineCache: Map<number, LineMarkers>;
+			private syntaxStyle: string;
 
 			constructor(view: EditorView) {
-				this.decorations = buildDecorations(view, plugin);
+				this.lineCache = new Map();
+				this.syntaxStyle = plugin.settings.syntaxStyle;
+				this.decorations = buildDecorations(view, plugin, this.lineCache);
+				this.cursorMarkerKey = getCursorMarkerKey(view, plugin);
 			}
 
 			update(update: ViewUpdate) {
-				if (update.docChanged || update.viewportChanged || update.selectionSet) {
-					this.decorations = buildDecorations(update.view, plugin);
+				let needsRebuild = false;
+
+				if (this.syntaxStyle !== plugin.settings.syntaxStyle) {
+					this.syntaxStyle = plugin.settings.syntaxStyle;
+					this.lineCache.clear();
+					needsRebuild = true;
+				}
+
+				if (update.docChanged) {
+					this.decorations = this.decorations.map(update.changes);
+					pruneLineCache(this.lineCache, update.state.doc.lines);
+					if (shouldRebuildForChanges(update, plugin)) {
+						needsRebuild = true;
+					}
+				}
+
+				if (update.viewportChanged) {
+					needsRebuild = true;
+				}
+
+				if (update.docChanged || update.selectionSet) {
+					const nextCursorMarkerKey = getCursorMarkerKey(update.view, plugin);
+					if (nextCursorMarkerKey !== this.cursorMarkerKey) {
+						this.cursorMarkerKey = nextCursorMarkerKey;
+						needsRebuild = true;
+					}
+				}
+
+				if (needsRebuild) {
+					this.decorations = buildDecorations(update.view, plugin, this.lineCache);
 				}
 			}
 		},
@@ -30,7 +75,11 @@ export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 }
 
 // Scan visible ranges and replace syntax markers with widgets (skipping active edits).
-function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): DecorationSet {
+function buildDecorations(
+	view: EditorView,
+	plugin: EmbedMetadataPlugin,
+	lineCache: Map<number, LineMarkers>
+): DecorationSet {
 	if (!view.state.field(editorLivePreviewField)) {
 		return Decoration.none;
 	}
@@ -48,66 +97,251 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 
 	const builder = new RangeSetBuilder<Decoration>();
 	const selectionRanges = view.state.selection.ranges;
+	const styleKey = getStyleKey(plugin.settings);
+	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
+	const seenLines = new Set<number>();
+	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
 
 	for (const range of view.visibleRanges) {
-		const text = view.state.doc.sliceString(range.from, range.to);
-		syntaxRegex.lastIndex = 0;
-		let match: RegExpExecArray | null;
+		const startLine = view.state.doc.lineAt(range.from).number;
+		const endLine = view.state.doc.lineAt(Math.max(range.to - 1, range.from)).number;
 
-		while ((match = syntaxRegex.exec(text)) !== null) {
-			const start = range.from + match.index;
-			const end = start + match[0].length;
+		for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+			if (seenLines.has(lineNumber)) {
+				continue;
+			}
+			seenLines.add(lineNumber);
 
-			if (selectionRanges.some((sel) => sel.from <= end && sel.to >= start)) {
+			const line = view.state.doc.line(lineNumber);
+			const markers = getLineMarkers(lineNumber, line, lineCache, syntaxRegex, syntaxOpen);
+			if (markers.length === 0) {
 				continue;
 			}
 
-			if (selectionRanges.some((sel) => {
-				const head = sel.head ?? sel.from;
-				return head >= start && head <= end;
-			})) {
-				continue;
-			}
+			for (const marker of markers) {
+				const start = line.from + marker.from;
+				const end = line.from + marker.to;
 
-			const key = (match[1] ?? "").trim();
-			if (!key) {
-				continue;
-			}
+				if (selectionRanges.some((sel) => sel.from === sel.to && sel.from >= start && sel.to <= end)) {
+					continue;
+				}
 
-			const value = resolveFrontmatterString(
-				frontmatter,
-				key,
-				plugin.settings.caseInsensitiveKeys
-			);
-			if (value === null) {
-				continue;
-			}
+				const value = resolveValue(marker.key);
+				if (value === null) {
+					continue;
+				}
 
-			builder.add(
-				start,
-				end,
-				Decoration.replace({
-					widget: new MetadataWidget(value, file.path, plugin),
-					inclusive: false,
-				})
-			);
+				builder.add(
+					start,
+					end,
+					Decoration.replace({
+						widget: new MetadataWidget(value, file.path, plugin, styleKey),
+						inclusive: false,
+					})
+				);
+			}
 		}
 	}
 
 	return builder.finish();
 }
 
+function getLineMarkers(
+	lineNumber: number,
+	line: {from: number; text: string},
+	lineCache: Map<number, LineMarkers>,
+	syntaxRegex: RegExp,
+	syntaxOpen: string
+): LineMarker[] {
+	const cached = lineCache.get(lineNumber);
+	if (cached && cached.text === line.text) {
+		return cached.markers;
+	}
+
+	const markers: LineMarker[] = [];
+	if (line.text.includes(syntaxOpen)) {
+		syntaxRegex.lastIndex = 0;
+		let match: RegExpExecArray | null;
+		while ((match = syntaxRegex.exec(line.text)) !== null) {
+			const key = (match[1] ?? "").trim();
+			if (!key) {
+				continue;
+			}
+
+			const start = match.index;
+			const end = start + match[0].length;
+			markers.push({from: start, to: end, key});
+		}
+	}
+
+	lineCache.set(lineNumber, {text: line.text, markers});
+	return markers;
+}
+
+function pruneLineCache(lineCache: Map<number, LineMarkers>, maxLine: number): void {
+	for (const lineNumber of lineCache.keys()) {
+		if (lineNumber > maxLine) {
+			lineCache.delete(lineNumber);
+		}
+	}
+}
+
+function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin): boolean {
+	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
+	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
+	const nextDoc = update.state.doc;
+	const prevDoc = update.startState.doc;
+	const prevFrontmatter = getFrontmatterRange(prevDoc);
+	const nextFrontmatter = getFrontmatterRange(nextDoc);
+	let needsRebuild = false;
+
+	update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+		if (needsRebuild) {
+			return;
+		}
+
+		if (prevFrontmatter && rangesOverlap(fromA, toA, prevFrontmatter.from, prevFrontmatter.to)) {
+			needsRebuild = true;
+			return;
+		}
+
+		if (nextFrontmatter && rangesOverlap(fromB, toB, nextFrontmatter.from, nextFrontmatter.to)) {
+			needsRebuild = true;
+			return;
+		}
+
+		if (changeTouchesMarker(prevDoc, fromA, toA, syntaxRegex, syntaxOpen)) {
+			needsRebuild = true;
+			return;
+		}
+
+		if (changeTouchesMarker(nextDoc, fromB, toB, syntaxRegex, syntaxOpen)) {
+			needsRebuild = true;
+		}
+	});
+
+	return needsRebuild;
+}
+
+function changeTouchesMarker(
+	doc: Text,
+	from: number,
+	to: number,
+	syntaxRegex: RegExp,
+	syntaxOpen: string
+): boolean {
+	const safeTo = Math.max(to - 1, from);
+	const startLine = doc.lineAt(from).number;
+	const endLine = doc.lineAt(safeTo).number;
+
+	for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+		const line = doc.line(lineNumber);
+		if (!line.text.includes(syntaxOpen)) {
+			continue;
+		}
+
+		syntaxRegex.lastIndex = 0;
+		let match: RegExpExecArray | null;
+		while ((match = syntaxRegex.exec(line.text)) !== null) {
+			const start = line.from + match.index;
+			const end = start + match[0].length;
+			if (rangesOverlap(from, to, start, end)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+function rangesOverlap(from: number, to: number, start: number, end: number): boolean {
+	if (from === to) {
+		return from >= start && from <= end;
+	}
+	return start < to && end > from;
+}
+
+function getFrontmatterRange(doc: Text): {from: number; to: number} | null {
+	if (doc.lines === 0) {
+		return null;
+	}
+
+	const firstLine = doc.line(1);
+	if (!/^---\s*$/.test(firstLine.text)) {
+		return null;
+	}
+
+	for (let lineNumber = 2; lineNumber <= doc.lines; lineNumber += 1) {
+		const line = doc.line(lineNumber);
+		if (/^(---|\.\.\.)\s*$/.test(line.text)) {
+			return {from: firstLine.from, to: line.to};
+		}
+	}
+
+	return null;
+}
+
+function getCursorMarkerKey(view: EditorView, plugin: EmbedMetadataPlugin): string {
+	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
+	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
+	const markerKeys: string[] = [];
+
+	for (const range of view.state.selection.ranges) {
+		if (range.from !== range.to) {
+			continue;
+		}
+
+		const pos = range.from;
+		const line = view.state.doc.lineAt(pos);
+		if (!line.text.includes(syntaxOpen)) {
+			continue;
+		}
+
+		syntaxRegex.lastIndex = 0;
+		let match: RegExpExecArray | null;
+		while ((match = syntaxRegex.exec(line.text)) !== null) {
+			const start = line.from + match.index;
+			const end = start + match[0].length;
+			if (pos >= start && pos <= end) {
+				markerKeys.push(`${start}:${end}`);
+				break;
+			}
+		}
+	}
+
+	if (markerKeys.length === 0) {
+		return "";
+	}
+
+	markerKeys.sort();
+	return markerKeys.join("|");
+}
+
 class MetadataWidget extends WidgetType {
 	private readonly value: string;
 	private readonly sourcePath: string;
 	private readonly plugin: EmbedMetadataPlugin;
+	private readonly styleKey: string;
+	private readonly isEmpty: boolean;
 
-	constructor(value: string, sourcePath: string, plugin: EmbedMetadataPlugin) {
+	constructor(value: string, sourcePath: string, plugin: EmbedMetadataPlugin, styleKey: string) {
 		super();
 		this.value = value;
 		this.sourcePath = sourcePath;
 		this.plugin = plugin;
+		this.styleKey = styleKey;
+		this.isEmpty = value.length === 0;
+	}
+
+	eq(other: MetadataWidget): boolean {
+		return this.value === other.value
+			&& this.sourcePath === other.sourcePath
+			&& this.styleKey === other.styleKey;
+	}
+
+	ignoreEvent(): boolean {
+		return !this.isEmpty;
 	}
 
 	// Render the replacement widget node for a single syntax marker.
@@ -115,6 +349,9 @@ class MetadataWidget extends WidgetType {
 		const span = document.createElement("span");
 		renderInlineMarkdown(this.plugin.app, this.sourcePath, span, this.value, this.plugin);
 		applyValueStyles(span, this.plugin.settings);
+		if (this.isEmpty) {
+			span.classList.add("embed-metadata-empty");
+		}
 		return span;
 	}
 }

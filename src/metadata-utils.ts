@@ -2,6 +2,7 @@
 
 // Syntax parsing and frontmatter resolution utilities.
 export type SyntaxStyle = "brackets" | "doubleBraces";
+export type FrontmatterResolver = (keyPath: string) => string | null;
 
 // Get the syntax opener for the selected style.
 export function getSyntaxOpen(style: SyntaxStyle): string {
@@ -33,9 +34,10 @@ export function getSyntaxTriggerRegex(style: SyntaxStyle): RegExp {
 export function resolveFrontmatterString(
 	frontmatter: Record<string, unknown>,
 	keyPath: string,
-	caseInsensitive = false
+	caseInsensitive = false,
+	keyMapCache?: WeakMap<object, Map<string, string>>
 ): string | null {
-	const value = resolveFrontmatterValue(frontmatter, keyPath, caseInsensitive);
+	const value = resolveFrontmatterValue(frontmatter, keyPath, caseInsensitive, keyMapCache);
 	if (value === undefined) {
 		return null;
 	}
@@ -43,6 +45,32 @@ export function resolveFrontmatterString(
 		return "";
 	}
 	return formatFrontmatterValue(value);
+}
+
+// Create a cached resolver for frontmatter lookups within a render pass.
+export function createFrontmatterResolver(
+	frontmatter: Record<string, unknown>,
+	caseInsensitive: boolean
+): FrontmatterResolver {
+	let valueCache: Map<string, string | null> | null = null;
+	let keyMapCache: WeakMap<object, Map<string, string>> | undefined;
+
+	return (keyPath: string) => {
+		if (valueCache && valueCache.has(keyPath)) {
+			return valueCache.get(keyPath) ?? null;
+		}
+
+		if (!valueCache) {
+			valueCache = new Map();
+		}
+		if (caseInsensitive && !keyMapCache) {
+			keyMapCache = new WeakMap();
+		}
+
+		const value = resolveFrontmatterString(frontmatter, keyPath, caseInsensitive, keyMapCache);
+		valueCache.set(keyPath, value);
+		return value;
+	};
 }
 
 // Collect flat and nested frontmatter keys for suggestions.
@@ -69,7 +97,8 @@ export function collectFrontmatterKeys(frontmatter: Record<string, unknown>): st
 function resolveFrontmatterValue(
 	frontmatter: Record<string, unknown>,
 	keyPath: string,
-	caseInsensitive: boolean
+	caseInsensitive: boolean,
+	keyMapCache?: WeakMap<object, Map<string, string>>
 ): unknown {
 	const parts = keyPath
 		.split(".")
@@ -89,8 +118,7 @@ function resolveFrontmatterValue(
 		}
 
 		if (caseInsensitive) {
-			const lowered = part.toLowerCase();
-			const matched = Object.keys(record).find((key) => key.toLowerCase() === lowered);
+			const matched = getCaseInsensitiveKey(record, part, keyMapCache);
 			if (matched) {
 				current = record[matched];
 				continue;
@@ -101,6 +129,28 @@ function resolveFrontmatterValue(
 	}
 
 	return current;
+}
+
+function getCaseInsensitiveKey(
+	record: Record<string, unknown>,
+	part: string,
+	keyMapCache?: WeakMap<object, Map<string, string>>
+): string | null {
+	const lowered = part.toLowerCase();
+	if (!keyMapCache) {
+		return Object.keys(record).find((key) => key.toLowerCase() === lowered) ?? null;
+	}
+
+	let keyMap = keyMapCache.get(record);
+	if (!keyMap) {
+		keyMap = new Map();
+		for (const key of Object.keys(record)) {
+			keyMap.set(key.toLowerCase(), key);
+		}
+		keyMapCache.set(record, keyMap);
+	}
+
+	return keyMap.get(lowered) ?? null;
 }
 
 // Convert frontmatter values into a readable inline string.

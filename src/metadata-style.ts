@@ -1,6 +1,21 @@
 // Shared styling helper for rendered metadata values.
 import {EmbedMetadataSettings} from "./settings";
 
+// Build a stable key for style settings so widgets can be reused safely.
+export function getStyleKey(settings: EmbedMetadataSettings): string {
+	return [
+		settings.bold ? "1" : "0",
+		settings.italic ? "1" : "0",
+		settings.underline ? "1" : "0",
+		settings.underlineColorEnabled ? "1" : "0",
+		settings.underlineColor,
+		settings.highlight ? "1" : "0",
+		settings.highlightColorEnabled ? "1" : "0",
+		settings.highlightColor,
+		settings.hoverEmphasis ? "1" : "0",
+	].join("|");
+}
+
 // Apply visual styling classes to a rendered value element.
 export function applyValueStyles(el: HTMLElement, settings: EmbedMetadataSettings): void {
 	el.classList.add("embed-metadata-value");

@@ -1,6 +1,8 @@
 // Inline markdown renderer for metadata values (links, embeds, etc.)
 import {App, Component, MarkdownRenderer} from "obsidian";
 
+const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|\n)/;
+
 // Render a value as inline markdown 
 export function renderInlineMarkdown(
 	app: App,
@@ -9,6 +11,11 @@ export function renderInlineMarkdown(
 	value: string,
 	component: Component
 ): void {
+	if (!value || !markdownHintRegex.test(value)) {
+		el.textContent = value;
+		return;
+	}
+
 	el.textContent = "";
 
 	const temp = document.createElement("span");
