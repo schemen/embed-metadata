@@ -2,7 +2,7 @@
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
 import {RangeSetBuilder, Text} from "@codemirror/state";
 import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
-import {getSyntaxOpen, getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
+import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
 import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
@@ -101,6 +101,7 @@ function buildDecorations(
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const seenLines = new Set<number>();
+	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
 
 	for (const range of view.visibleRanges) {
 		const startLine = view.state.doc.lineAt(range.from).number;
@@ -126,11 +127,7 @@ function buildDecorations(
 					continue;
 				}
 
-				const value = resolveFrontmatterString(
-					frontmatter,
-					marker.key,
-					plugin.settings.caseInsensitiveKeys
-				);
+				const value = resolveValue(marker.key);
 				if (value === null) {
 					continue;
 				}

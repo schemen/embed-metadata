@@ -1,6 +1,6 @@
 // Reading view renderer that replaces syntax markers in the preview DOM.
 import {TFile} from "obsidian";
-import {getSyntaxOpen, getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
+import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
@@ -24,6 +24,7 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 			return;
 		}
 
+		const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
 		const doc = el.ownerDocument;
 		const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 		const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
@@ -52,11 +53,7 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 		for (const textNode of textNodes) {
 			replaceSyntaxInTextNode(
 				textNode,
-				(key) => resolveFrontmatterString(
-					frontmatter,
-					key,
-					plugin.settings.caseInsensitiveKeys
-				),
+				(key) => resolveValue(key),
 				doc,
 				syntaxRegex,
 				syntaxOpen,
