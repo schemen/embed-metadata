@@ -29,12 +29,14 @@ The Author called [%author_name] is really funny!
 
 The syntax markers are replaced in reading view and live preview. Source mode keeps
 the syntax as plain text. If a key is missing, the marker is left unchanged.
-Inline code and code blocks are ignored in preview.
+Inline code and code blocks are ignored in preview. If a key exists but has no
+value, the marker renders empty.
 
 ## Settings
 
 Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
+- Optional case-insensitive key lookup
 
 Visual look options apply in Live Preview:
 - Bold / Italic / Underline toggles
