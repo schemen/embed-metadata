@@ -43,3 +43,8 @@
 .embed-metadata-hoverable:not(.embed-metadata-bold):hover {
 	font-weight: 600;
 }
+
+.embed-metadata-value.embed-metadata-empty {
+	display: inline-block;
+	min-width: 0.25ch;
+}

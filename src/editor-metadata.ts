@@ -323,6 +323,7 @@ class MetadataWidget extends WidgetType {
 	private readonly sourcePath: string;
 	private readonly plugin: EmbedMetadataPlugin;
 	private readonly styleKey: string;
+	private readonly isEmpty: boolean;
 
 	constructor(value: string, sourcePath: string, plugin: EmbedMetadataPlugin, styleKey: string) {
 		super();
@@ -330,6 +331,7 @@ class MetadataWidget extends WidgetType {
 		this.sourcePath = sourcePath;
 		this.plugin = plugin;
 		this.styleKey = styleKey;
+		this.isEmpty = value.length === 0;
 	}
 
 	eq(other: MetadataWidget): boolean {
@@ -338,11 +340,18 @@ class MetadataWidget extends WidgetType {
 			&& this.styleKey === other.styleKey;
 	}
 
+	ignoreEvent(): boolean {
+		return !this.isEmpty;
+	}
+
 	// Render the replacement widget node for a single syntax marker.
 	toDOM(): HTMLElement {
 		const span = document.createElement("span");
 		renderInlineMarkdown(this.plugin.app, this.sourcePath, span, this.value, this.plugin);
 		applyValueStyles(span, this.plugin.settings);
+		if (this.isEmpty) {
+			span.classList.add("embed-metadata-empty");
+		}
 		return span;
 	}
 }
