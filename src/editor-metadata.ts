@@ -7,23 +7,45 @@ import {renderInlineMarkdown} from "./markdown-render";
 import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
 
+type LineMarker = {
+	from: number;
+	to: number;
+	key: string;
+};
+
+type LineMarkers = {
+	text: string;
+	markers: LineMarker[];
+};
+
 // Build the Live Preview view plugin that renders syntax markers in the editor.
 export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
 			private cursorMarkerKey: string;
+			private lineCache: Map<number, LineMarkers>;
+			private syntaxStyle: string;
 
 			constructor(view: EditorView) {
-				this.decorations = buildDecorations(view, plugin);
+				this.lineCache = new Map();
+				this.syntaxStyle = plugin.settings.syntaxStyle;
+				this.decorations = buildDecorations(view, plugin, this.lineCache);
 				this.cursorMarkerKey = getCursorMarkerKey(view, plugin);
 			}
 
 			update(update: ViewUpdate) {
 				let needsRebuild = false;
 
+				if (this.syntaxStyle !== plugin.settings.syntaxStyle) {
+					this.syntaxStyle = plugin.settings.syntaxStyle;
+					this.lineCache.clear();
+					needsRebuild = true;
+				}
+
 				if (update.docChanged) {
 					this.decorations = this.decorations.map(update.changes);
+					pruneLineCache(this.lineCache, update.state.doc.lines);
 					if (shouldRebuildForChanges(update, plugin)) {
 						needsRebuild = true;
 					}
@@ -42,7 +64,7 @@ export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 				}
 
 				if (needsRebuild) {
-					this.decorations = buildDecorations(update.view, plugin);
+					this.decorations = buildDecorations(update.view, plugin, this.lineCache);
 				}
 			}
 		},
@@ -53,7 +75,11 @@ export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 }
 
 // Scan visible ranges and replace syntax markers with widgets (skipping active edits).
-function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): DecorationSet {
+function buildDecorations(
+	view: EditorView,
+	plugin: EmbedMetadataPlugin,
+	lineCache: Map<number, LineMarkers>
+): DecorationSet {
 	if (!view.state.field(editorLivePreviewField)) {
 		return Decoration.none;
 	}
@@ -74,49 +100,94 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 	const styleKey = getStyleKey(plugin.settings);
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
+	const seenLines = new Set<number>();
 
 	for (const range of view.visibleRanges) {
-		const text = view.state.doc.sliceString(range.from, range.to);
-		if (!text.includes(syntaxOpen)) {
-			continue;
-		}
-		syntaxRegex.lastIndex = 0;
-		let match: RegExpExecArray | null;
+		const startLine = view.state.doc.lineAt(range.from).number;
+		const endLine = view.state.doc.lineAt(Math.max(range.to - 1, range.from)).number;
 
-		while ((match = syntaxRegex.exec(text)) !== null) {
-			const start = range.from + match.index;
-			const end = start + match[0].length;
+		for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+			if (seenLines.has(lineNumber)) {
+				continue;
+			}
+			seenLines.add(lineNumber);
 
-			if (selectionRanges.some((sel) => sel.from === sel.to && sel.from >= start && sel.to <= end)) {
+			const line = view.state.doc.line(lineNumber);
+			const markers = getLineMarkers(lineNumber, line, lineCache, syntaxRegex, syntaxOpen);
+			if (markers.length === 0) {
 				continue;
 			}
 
+			for (const marker of markers) {
+				const start = line.from + marker.from;
+				const end = line.from + marker.to;
+
+				if (selectionRanges.some((sel) => sel.from === sel.to && sel.from >= start && sel.to <= end)) {
+					continue;
+				}
+
+				const value = resolveFrontmatterString(
+					frontmatter,
+					marker.key,
+					plugin.settings.caseInsensitiveKeys
+				);
+				if (value === null) {
+					continue;
+				}
+
+				builder.add(
+					start,
+					end,
+					Decoration.replace({
+						widget: new MetadataWidget(value, file.path, plugin, styleKey),
+						inclusive: false,
+					})
+				);
+			}
+		}
+	}
+
+	return builder.finish();
+}
+
+function getLineMarkers(
+	lineNumber: number,
+	line: {from: number; text: string},
+	lineCache: Map<number, LineMarkers>,
+	syntaxRegex: RegExp,
+	syntaxOpen: string
+): LineMarker[] {
+	const cached = lineCache.get(lineNumber);
+	if (cached && cached.text === line.text) {
+		return cached.markers;
+	}
+
+	const markers: LineMarker[] = [];
+	if (line.text.includes(syntaxOpen)) {
+		syntaxRegex.lastIndex = 0;
+		let match: RegExpExecArray | null;
+		while ((match = syntaxRegex.exec(line.text)) !== null) {
 			const key = (match[1] ?? "").trim();
 			if (!key) {
 				continue;
 			}
 
-			const value = resolveFrontmatterString(
-				frontmatter,
-				key,
-				plugin.settings.caseInsensitiveKeys
-			);
-			if (value === null) {
-				continue;
-			}
-
-			builder.add(
-				start,
-				end,
-				Decoration.replace({
-					widget: new MetadataWidget(value, file.path, plugin, styleKey),
-					inclusive: false,
-				})
-			);
+			const start = match.index;
+			const end = start + match[0].length;
+			markers.push({from: start, to: end, key});
 		}
 	}
 
-	return builder.finish();
+	lineCache.set(lineNumber, {text: line.text, markers});
+	return markers;
+}
+
+function pruneLineCache(lineCache: Map<number, LineMarkers>, maxLine: number): void {
+	for (const lineNumber of lineCache.keys()) {
+		if (lineNumber > maxLine) {
+			lineCache.delete(lineNumber);
+		}
+	}
 }
 
 function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin): boolean {
@@ -212,10 +283,6 @@ function getFrontmatterRange(doc: Text): {from: number; to: number} | null {
 	}
 
 	return null;
-}
-
-function isCursorInsideMarker(view: EditorView, plugin: EmbedMetadataPlugin): boolean {
-	return getCursorMarkerKey(view, plugin).length > 0;
 }
 
 function getCursorMarkerKey(view: EditorView, plugin: EmbedMetadataPlugin): string {
