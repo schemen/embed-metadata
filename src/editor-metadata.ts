@@ -2,9 +2,9 @@
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
 import {RangeSetBuilder} from "@codemirror/state";
 import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
-import {getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
+import {getSyntaxOpen, getSyntaxRegex, resolveFrontmatterString} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
-import {applyValueStyles} from "./metadata-style";
+import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
 
 // Build the Live Preview view plugin that renders syntax markers in the editor.
@@ -48,10 +48,15 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 
 	const builder = new RangeSetBuilder<Decoration>();
 	const selectionRanges = view.state.selection.ranges;
+	const styleKey = getStyleKey(plugin.settings);
+	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 
 	for (const range of view.visibleRanges) {
 		const text = view.state.doc.sliceString(range.from, range.to);
+		if (!text.includes(syntaxOpen)) {
+			continue;
+		}
 		syntaxRegex.lastIndex = 0;
 		let match: RegExpExecArray | null;
 
@@ -59,14 +64,7 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 			const start = range.from + match.index;
 			const end = start + match[0].length;
 
-			if (selectionRanges.some((sel) => sel.from <= end && sel.to >= start)) {
-				continue;
-			}
-
-			if (selectionRanges.some((sel) => {
-				const head = sel.head ?? sel.from;
-				return head >= start && head <= end;
-			})) {
+			if (selectionRanges.some((sel) => sel.from === sel.to && sel.from >= start && sel.to <= end)) {
 				continue;
 			}
 
@@ -88,7 +86,7 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 				start,
 				end,
 				Decoration.replace({
-					widget: new MetadataWidget(value, file.path, plugin),
+					widget: new MetadataWidget(value, file.path, plugin, styleKey),
 					inclusive: false,
 				})
 			);
@@ -102,12 +100,20 @@ class MetadataWidget extends WidgetType {
 	private readonly value: string;
 	private readonly sourcePath: string;
 	private readonly plugin: EmbedMetadataPlugin;
+	private readonly styleKey: string;
 
-	constructor(value: string, sourcePath: string, plugin: EmbedMetadataPlugin) {
+	constructor(value: string, sourcePath: string, plugin: EmbedMetadataPlugin, styleKey: string) {
 		super();
 		this.value = value;
 		this.sourcePath = sourcePath;
 		this.plugin = plugin;
+		this.styleKey = styleKey;
+	}
+
+	eq(other: MetadataWidget): boolean {
+		return this.value === other.value
+			&& this.sourcePath === other.sourcePath
+			&& this.styleKey === other.styleKey;
 	}
 
 	// Render the replacement widget node for a single syntax marker.
