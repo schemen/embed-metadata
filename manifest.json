@@ -1,11 +1,11 @@
 {
 	"id": "embed-metadata",
 	"name": "Embed Metadata",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"minAppVersion": "0.15.0",
-	"description": "Render frontmatter metadata (Obsidian Properties) inside your notes with a lightweight inline [%key] or {{key}} syntax.",
+	"description": "Render frontmatter metadata (Properties) inside your notes with a lightweight inline syntax.",
 	"author": "Schemen",
-	"authorUrl": "https://github.com/schemen/embed-metadata",
+	"authorUrl": "https://github.com/schemen",
 	"fundingUrl": "https://buymeacoffee.com/schemen",
 	"isDesktopOnly": false
 }
