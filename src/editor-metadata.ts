@@ -75,7 +75,11 @@ function buildDecorations(view: EditorView, plugin: EmbedMetadataPlugin): Decora
 				continue;
 			}
 
-			const value = resolveFrontmatterString(frontmatter, key);
+			const value = resolveFrontmatterString(
+				frontmatter,
+				key,
+				plugin.settings.caseInsensitiveKeys
+			);
 			if (value === null) {
 				continue;
 			}

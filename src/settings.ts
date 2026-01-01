@@ -4,6 +4,7 @@ import {MigrationModal} from "./migration-modal";
 
 export interface EmbedMetadataSettings {
 	syntaxStyle: SyntaxStyle;
+	caseInsensitiveKeys: boolean;
 	bold: boolean;
 	italic: boolean;
 	underline: boolean;
@@ -18,6 +19,7 @@ export interface EmbedMetadataSettings {
 // Defaults for newly installed or reset settings.
 export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	syntaxStyle: "brackets",
+	caseInsensitiveKeys: false,
 	bold: false,
 	italic: false,
 	underline: true,
@@ -63,6 +65,18 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.syntaxStyle)
 					.onChange(async (value) => {
 						this.plugin.settings.syntaxStyle = value as SyntaxStyle;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Case-insensitive keys")
+			.setDesc("Treat keys as case-insensitive (Age matches {{age}}).")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.caseInsensitiveKeys)
+					.onChange(async (value) => {
+						this.plugin.settings.caseInsensitiveKeys = value;
 						await this.plugin.saveSettings();
 					});
 			});

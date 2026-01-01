@@ -32,9 +32,10 @@ export function getSyntaxTriggerRegex(style: SyntaxStyle): RegExp {
 // support nested values (yet?).
 export function resolveFrontmatterString(
 	frontmatter: Record<string, unknown>,
-	keyPath: string
+	keyPath: string,
+	caseInsensitive = false
 ): string | null {
-	const value = resolveFrontmatterValue(frontmatter, keyPath);
+	const value = resolveFrontmatterValue(frontmatter, keyPath, caseInsensitive);
 	if (value === undefined) {
 		return null;
 	}
@@ -67,7 +68,8 @@ export function collectFrontmatterKeys(frontmatter: Record<string, unknown>): st
 // Walk the frontmatter object to resolve a dot-path.
 function resolveFrontmatterValue(
 	frontmatter: Record<string, unknown>,
-	keyPath: string
+	keyPath: string,
+	caseInsensitive: boolean
 ): unknown {
 	const parts = keyPath
 		.split(".")
@@ -76,11 +78,26 @@ function resolveFrontmatterValue(
 	let current: unknown = frontmatter;
 
 	for (const part of parts) {
-		if (current && typeof current === "object" && part in current) {
-			current = (current as Record<string, unknown>)[part];
-		} else {
+		if (!current || typeof current !== "object" || Array.isArray(current)) {
 			return undefined;
 		}
+
+		const record = current as Record<string, unknown>;
+		if (part in record) {
+			current = record[part];
+			continue;
+		}
+
+		if (caseInsensitive) {
+			const lowered = part.toLowerCase();
+			const matched = Object.keys(record).find((key) => key.toLowerCase() === lowered);
+			if (matched) {
+				current = record[matched];
+				continue;
+			}
+		}
+
+		return undefined;
 	}
 
 	return current;

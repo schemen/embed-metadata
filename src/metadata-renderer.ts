@@ -52,7 +52,11 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 		for (const textNode of textNodes) {
 			replaceSyntaxInTextNode(
 				textNode,
-				(key) => resolveFrontmatterString(frontmatter, key),
+				(key) => resolveFrontmatterString(
+					frontmatter,
+					key,
+					plugin.settings.caseInsensitiveKeys
+				),
 				doc,
 				syntaxRegex,
 				syntaxOpen,
