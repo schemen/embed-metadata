@@ -35,8 +35,11 @@ export function resolveFrontmatterString(
 	keyPath: string
 ): string | null {
 	const value = resolveFrontmatterValue(frontmatter, keyPath);
-	if (value === undefined || value === null) {
+	if (value === undefined) {
 		return null;
+	}
+	if (value === null) {
+		return "";
 	}
 	return formatFrontmatterValue(value);
 }
