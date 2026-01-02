@@ -5,6 +5,7 @@ import {MigrationModal} from "./migration-modal";
 export interface EmbedMetadataSettings {
 	syntaxStyle: SyntaxStyle;
 	caseInsensitiveKeys: boolean;
+	renderOutline: boolean;
 	bold: boolean;
 	italic: boolean;
 	underline: boolean;
@@ -20,6 +21,7 @@ export interface EmbedMetadataSettings {
 export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	syntaxStyle: "brackets",
 	caseInsensitiveKeys: false,
+	renderOutline: false,
 	bold: false,
 	italic: false,
 	underline: true,
@@ -77,6 +79,18 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.caseInsensitiveKeys)
 					.onChange(async (value) => {
 						this.plugin.settings.caseInsensitiveKeys = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Render in outline (experimental)")
+			.setDesc("Render metadata markers in the Outline view.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.renderOutline)
+					.onChange(async (value) => {
+						this.plugin.settings.renderOutline = value;
 						await this.plugin.saveSettings();
 					});
 			});

@@ -2,16 +2,19 @@ import {MarkdownView, Plugin} from "obsidian";
 import {createEditorExtension} from "./editor-metadata";
 import {registerMetadataRenderer} from "./metadata-renderer";
 import {MetadataSuggest} from "./metadata-suggest";
+import {registerOutlineRenderer} from "./outline-renderer";
 import {DEFAULT_SETTINGS, EmbedMetadataSettingTab, EmbedMetadataSettings} from "./settings";
 
 export default class EmbedMetadata extends Plugin {
 	settings: EmbedMetadataSettings;
+	private refreshOutlineViews: (() => void) | null = null;
 
 	async onload() {
 		await this.loadSettings();
 
 		this.registerEditorExtension(createEditorExtension(this));
 		registerMetadataRenderer(this);
+		this.refreshOutlineViews = registerOutlineRenderer(this);
 		this.registerEditorSuggest(new MetadataSuggest(this));
 		this.addSettingTab(new EmbedMetadataSettingTab(this.app, this));
 	}
@@ -23,6 +26,7 @@ export default class EmbedMetadata extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 		this.refreshAllMarkdownViews();
+		this.refreshOutlineViews?.();
 	}
 
 	// Refresh rendered markdown after a change of setting

@@ -40,3 +40,34 @@ export function renderInlineMarkdown(
 		temp.remove();
 	});
 }
+
+// Render markdown but keep only the plain text content.
+export function renderInlineMarkdownText(
+	app: App,
+	sourcePath: string,
+	el: HTMLElement,
+	value: string,
+	component: Component,
+	onRendered?: (text: string) => void
+): void {
+	if (!value || !markdownHintRegex.test(value)) {
+		el.textContent = value;
+		onRendered?.(value);
+		return;
+	}
+
+	el.textContent = "";
+	const temp = document.createElement("span");
+	el.appendChild(temp);
+
+	void MarkdownRenderer.render(app, value, temp, sourcePath, component).then(() => {
+		if (!temp.parentElement) {
+			return;
+		}
+
+		const text = temp.textContent ?? "";
+		el.textContent = text;
+		temp.remove();
+		onRendered?.(text);
+	});
+}
