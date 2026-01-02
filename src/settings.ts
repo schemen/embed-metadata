@@ -85,7 +85,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Render in outline (experimental)")
-			.setDesc("Render metadata markers in the Outline view.")
+			.setDesc("Render metadata markers in the outline view.")
 			.addToggle((toggle) => {
 				toggle
 					.setValue(this.plugin.settings.renderOutline)

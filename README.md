@@ -37,6 +37,7 @@ value, the marker renders empty.
 Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
 - Optional case-insensitive key lookup
+- Optional outline rendering (experimental; replaces markers in the Outline sidebar)
 
 Visual look options apply in Live Preview:
 - Bold / Italic / Underline toggles
