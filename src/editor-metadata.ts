@@ -18,6 +18,13 @@ type LineMarkers = {
 	markers: LineMarker[];
 };
 
+type MarkdownStyle = {
+	italic: boolean;
+	bold: boolean;
+	strike: boolean;
+	highlight: boolean;
+};
+
 type FenceState = {
 	inFence: boolean;
 	fenceChar: string;
@@ -157,7 +164,6 @@ function buildDecorations(
 		for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
 			const line = view.state.doc.line(lineNumber);
 			const {lineInFence, isFenceLine} = updateFenceStateForLine(line.text, fenceState);
-			const inlineCodeRanges = lineInFence || isFenceLine ? [] : getInlineCodeRanges(line.text);
 			if (seenLines.has(lineNumber)) {
 				continue;
 			}
@@ -167,6 +173,19 @@ function buildDecorations(
 			if (markers.length === 0) {
 				continue;
 			}
+
+			const inlineCodeRanges = lineInFence || isFenceLine ? [] : getInlineCodeRanges(line.text);
+			// Mask marker contents so underscores in keys don't confuse markdown emphasis parsing.
+			const maskedText = maskMarkerText(line.text, markers);
+			const emphasisRanges = lineInFence || isFenceLine
+				? []
+				: getEmphasisRanges(maskedText, inlineCodeRanges);
+			const strikeRanges = lineInFence || isFenceLine
+				? []
+				: getDelimitedRanges(maskedText, "~~", inlineCodeRanges);
+			const highlightRanges = lineInFence || isFenceLine
+				? []
+				: getDelimitedRanges(maskedText, "==", inlineCodeRanges);
 
 			for (const marker of markers) {
 				if (lineInFence || isFenceLine || isMarkerInInlineCode(marker, inlineCodeRanges)) {
@@ -185,11 +204,17 @@ function buildDecorations(
 					continue;
 				}
 
+				const markdownStyle = getMarkdownStyleForMarker(
+					marker,
+					emphasisRanges,
+					strikeRanges,
+					highlightRanges
+				);
 				builder.add(
 					start,
 					end,
 					Decoration.replace({
-						widget: new MetadataWidget(value, file.path, plugin, styleKey),
+						widget: new MetadataWidget(value, file.path, plugin, styleKey, markdownStyle),
 						inclusive: false,
 					})
 				);
@@ -232,6 +257,22 @@ function getLineMarkers(
 	return markers;
 }
 
+function maskMarkerText(text: string, markers: LineMarker[]): string {
+	if (markers.length === 0) {
+		return text;
+	}
+
+	const chars = text.split("");
+	for (const marker of markers) {
+		const start = Math.max(0, marker.from);
+		const end = Math.min(chars.length, marker.to);
+		for (let i = start; i < end; i += 1) {
+			chars[i] = "x";
+		}
+	}
+	return chars.join("");
+}
+
 function getFenceStateBeforeLine(doc: Text, lineNumber: number): FenceState {
 	const state: FenceState = {inFence: false, fenceChar: "", fenceLen: 0};
 	for (let line = 1; line < lineNumber; line += 1) {
@@ -269,6 +310,8 @@ function updateFenceStateForLine(
 }
 
 type InlineCodeRange = {from: number; to: number};
+type EmphasisRange = {from: number; to: number; italic: boolean; bold: boolean};
+type DelimitedRange = {from: number; to: number};
 
 function getInlineCodeRanges(text: string): InlineCodeRange[] {
 	const ranges: InlineCodeRange[] = [];
@@ -309,6 +352,129 @@ function isMarkerInInlineCode(marker: LineMarker, ranges: InlineCodeRange[]): bo
 		}
 	}
 	return false;
+}
+
+function getDelimitedRanges(
+	text: string,
+	delimiter: string,
+	inlineCodeRanges: InlineCodeRange[]
+): DelimitedRange[] {
+	const ranges: DelimitedRange[] = [];
+	let openStart: number | null = null;
+	let i = 0;
+
+	while (i <= text.length - delimiter.length) {
+		const inlineRange = findInlineRangeAt(i, inlineCodeRanges);
+		if (inlineRange) {
+			i = inlineRange.to;
+			continue;
+		}
+
+		if (text.slice(i, i + delimiter.length) !== delimiter) {
+			i += 1;
+			continue;
+		}
+
+		if (openStart === null) {
+			openStart = i;
+		} else {
+			ranges.push({from: openStart + delimiter.length, to: i});
+			openStart = null;
+		}
+
+		i += delimiter.length;
+	}
+
+	return ranges;
+}
+
+function getEmphasisRanges(text: string, inlineCodeRanges: InlineCodeRange[]): EmphasisRange[] {
+	const ranges: EmphasisRange[] = [];
+	const stack: {char: string; len: number; pos: number}[] = [];
+	let i = 0;
+
+	while (i < text.length) {
+		const inlineRange = findInlineRangeAt(i, inlineCodeRanges);
+		if (inlineRange) {
+			i = inlineRange.to;
+			continue;
+		}
+
+		const ch = text[i];
+		if (ch !== "*" && ch !== "_") {
+			i += 1;
+			continue;
+		}
+
+		let j = i;
+		while (j < text.length && text[j] === ch) {
+			j += 1;
+		}
+		const len = Math.min(j - i, 3);
+		const top = stack[stack.length - 1];
+
+		if (top && top.char === ch && top.len === len) {
+			const from = top.pos + top.len;
+			const to = i;
+			ranges.push({
+				from,
+				to,
+				italic: len === 1 || len === 3,
+				bold: len === 2 || len === 3,
+			});
+			stack.pop();
+		} else {
+			stack.push({char: ch, len, pos: i});
+		}
+
+		i = j;
+	}
+
+	return ranges;
+}
+
+function findInlineRangeAt(pos: number, ranges: InlineCodeRange[]): InlineCodeRange | null {
+	for (const range of ranges) {
+		if (pos >= range.from && pos < range.to) {
+			return range;
+		}
+	}
+	return null;
+}
+
+function getMarkdownStyleForMarker(
+	marker: LineMarker,
+	emphasisRanges: EmphasisRange[],
+	strikeRanges: DelimitedRange[],
+	highlightRanges: DelimitedRange[]
+): MarkdownStyle {
+	let italic = false;
+	let bold = false;
+	let strike = false;
+	let highlight = false;
+
+	for (const range of emphasisRanges) {
+		if (rangesOverlap(marker.from, marker.to, range.from, range.to)) {
+			italic = italic || range.italic;
+			bold = bold || range.bold;
+		}
+	}
+
+	for (const range of strikeRanges) {
+		if (rangesOverlap(marker.from, marker.to, range.from, range.to)) {
+			strike = true;
+			break;
+		}
+	}
+
+	for (const range of highlightRanges) {
+		if (rangesOverlap(marker.from, marker.to, range.from, range.to)) {
+			highlight = true;
+			break;
+		}
+	}
+
+	return {italic, bold, strike, highlight};
 }
 
 function pruneLineCache(lineCache: Map<number, LineMarkers>, maxLine: number): void {
@@ -455,21 +621,33 @@ class MetadataWidget extends WidgetType {
 	private readonly sourcePath: string;
 	private readonly plugin: EmbedMetadataPlugin;
 	private readonly styleKey: string;
+	private readonly markdownStyle: MarkdownStyle;
 	private readonly isEmpty: boolean;
 
-	constructor(value: string, sourcePath: string, plugin: EmbedMetadataPlugin, styleKey: string) {
+	constructor(
+		value: string,
+		sourcePath: string,
+		plugin: EmbedMetadataPlugin,
+		styleKey: string,
+		markdownStyle: MarkdownStyle
+	) {
 		super();
 		this.value = value;
 		this.sourcePath = sourcePath;
 		this.plugin = plugin;
 		this.styleKey = styleKey;
+		this.markdownStyle = markdownStyle;
 		this.isEmpty = value.length === 0;
 	}
 
 	eq(other: MetadataWidget): boolean {
 		return this.value === other.value
 			&& this.sourcePath === other.sourcePath
-			&& this.styleKey === other.styleKey;
+			&& this.styleKey === other.styleKey
+			&& this.markdownStyle.italic === other.markdownStyle.italic
+			&& this.markdownStyle.bold === other.markdownStyle.bold
+			&& this.markdownStyle.strike === other.markdownStyle.strike
+			&& this.markdownStyle.highlight === other.markdownStyle.highlight;
 	}
 
 	ignoreEvent(): boolean {
@@ -479,8 +657,33 @@ class MetadataWidget extends WidgetType {
 	// Render the replacement widget node for a single syntax marker.
 	toDOM(): HTMLElement {
 		const span = document.createElement("span");
-		renderInlineMarkdown(this.plugin.app, this.sourcePath, span, this.value, this.plugin);
 		applyValueStyles(span, this.plugin.settings);
+		let container = span;
+		if (this.markdownStyle.highlight) {
+			const mark = document.createElement("mark");
+			mark.classList.add("cm-highlight");
+			container.appendChild(mark);
+			container = mark;
+		}
+		if (this.markdownStyle.strike) {
+			const del = document.createElement("del");
+			del.classList.add("cm-strikethrough");
+			container.appendChild(del);
+			container = del;
+		}
+		if (this.markdownStyle.bold) {
+			const strong = document.createElement("strong");
+			strong.classList.add("cm-strong");
+			container.appendChild(strong);
+			container = strong;
+		}
+		if (this.markdownStyle.italic) {
+			const em = document.createElement("em");
+			em.classList.add("cm-em");
+			container.appendChild(em);
+			container = em;
+		}
+		renderInlineMarkdown(this.plugin.app, this.sourcePath, container, this.value, this.plugin);
 		if (this.isEmpty) {
 			span.classList.add("embed-metadata-empty");
 		}
