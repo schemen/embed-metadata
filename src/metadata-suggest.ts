@@ -1,6 +1,11 @@
 // Autocomplete & Suggester for frontmatter keys
 import {Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, TFile} from "obsidian";
-import {collectFrontmatterKeys, getSyntaxClose, getSyntaxTriggerRegex} from "./metadata-utils";
+import {
+	collectFrontmatterKeys,
+	getBuiltInKeys,
+	getSyntaxClose,
+	getSyntaxTriggerRegex,
+} from "./metadata-utils";
 import {EmbedMetadataPlugin} from "./settings";
 
 export class MetadataSuggest extends EditorSuggest<string> {
@@ -35,12 +40,11 @@ export class MetadataSuggest extends EditorSuggest<string> {
 
 	// Return sorted frontmatter keys that match the current query
 	getSuggestions(context: EditorSuggestContext): string[] {
-		const frontmatter = this.plugin.app.metadataCache.getFileCache(context.file)?.frontmatter;
-		if (!frontmatter) {
-			return [];
+		const frontmatter = this.plugin.app.metadataCache.getFileCache(context.file)?.frontmatter ?? null;
+		const keys = frontmatter ? collectFrontmatterKeys(frontmatter) : [];
+		if (this.plugin.settings.builtInKeysEnabled) {
+			keys.push(...getBuiltInKeys());
 		}
-
-		const keys = collectFrontmatterKeys(frontmatter);
 		const query = context.query.toLowerCase();
 
 		const unique = new Set<string>();

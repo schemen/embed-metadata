@@ -4,6 +4,26 @@ import {MarkdownView, Plugin, TFile} from "obsidian";
 // Syntax parsing and frontmatter resolution utilities.
 export type SyntaxStyle = "brackets" | "doubleBraces";
 export type FrontmatterResolver = (keyPath: string) => string | null;
+export type BuiltInKey =
+	| "filename"
+	| "basename"
+	| "extension"
+	| "path"
+	| "folder"
+	| "link"
+	| "ctime"
+	| "mtime";
+
+const BUILT_IN_KEYS: BuiltInKey[] = [
+	"filename",
+	"basename",
+	"extension",
+	"path",
+	"folder",
+	"link",
+	"ctime",
+	"mtime",
+];
 
 // Get the syntax opener for the selected style.
 export function getSyntaxOpen(style: SyntaxStyle): string {
@@ -110,7 +130,9 @@ export function resolveFrontmatterString(
 // Create a cached resolver for frontmatter lookups within a render pass.
 export function createFrontmatterResolver(
 	frontmatter: Record<string, unknown>,
-	caseInsensitive: boolean
+	caseInsensitive: boolean,
+	file?: TFile | null,
+	builtInKeysEnabled = false
 ): FrontmatterResolver {
 	let valueCache: Map<string, string | null> | null = null;
 	let keyMapCache: WeakMap<object, Map<string, string>> | undefined;
@@ -128,8 +150,19 @@ export function createFrontmatterResolver(
 		}
 
 		const value = resolveFrontmatterString(frontmatter, keyPath, caseInsensitive, keyMapCache);
-		valueCache.set(keyPath, value);
-		return value;
+		if (value !== null) {
+			valueCache.set(keyPath, value);
+			return value;
+		}
+
+		if (builtInKeysEnabled && file) {
+			const builtInValue = resolveBuiltInValue(file, keyPath, caseInsensitive);
+			valueCache.set(keyPath, builtInValue);
+			return builtInValue;
+		}
+
+		valueCache.set(keyPath, null);
+		return null;
 	};
 }
 
@@ -151,6 +184,43 @@ export function collectFrontmatterKeys(frontmatter: Record<string, unknown>): st
 
 	walk(frontmatter, "");
 	return keys;
+}
+
+// Return the list of built-in keys available for suggestions.
+export function getBuiltInKeys(): string[] {
+	return [...BUILT_IN_KEYS];
+}
+
+function resolveBuiltInValue(file: TFile, keyPath: string, caseInsensitive: boolean): string | null {
+	const key = caseInsensitive ? keyPath.toLowerCase() : keyPath;
+	if (!key || key.includes(".")) {
+		return null;
+	}
+
+	switch (key as BuiltInKey) {
+		case "filename":
+			return file.name;
+		case "basename":
+			return file.basename;
+		case "extension":
+			return file.extension;
+		case "path":
+			return file.path;
+		case "folder":
+			return file.parent?.path ?? "";
+		case "link":
+			return `[[${file.path}|${file.basename}]]`;
+		case "ctime":
+			return formatBuiltInDate(file.stat.ctime);
+		case "mtime":
+			return formatBuiltInDate(file.stat.mtime);
+		default:
+			return null;
+	}
+}
+
+function formatBuiltInDate(timestamp: number): string {
+	return new Date(timestamp).toLocaleString();
 }
 
 // Walk the frontmatter object to resolve a dot-path.

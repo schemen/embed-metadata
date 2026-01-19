@@ -71,13 +71,18 @@ function updateOutlineView(plugin: EmbedMetadataPlugin, leaf: WorkspaceLeaf): vo
 		return;
 	}
 
-	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-	if (!frontmatter) {
+	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+	if (!frontmatter && !plugin.settings.builtInKeysEnabled) {
 		resetOutlineView(leaf);
 		return;
 	}
 
-	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
+	const resolveValue = createFrontmatterResolver(
+		frontmatter ?? {},
+		plugin.settings.caseInsensitiveKeys,
+		file,
+		plugin.settings.builtInKeysEnabled
+	);
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const items = Array.from(container.querySelectorAll<HTMLElement>(OUTLINE_ITEM_SELECTOR));

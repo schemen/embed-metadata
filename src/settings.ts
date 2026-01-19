@@ -5,6 +5,7 @@ import {MigrationModal} from "./migration-modal";
 export interface EmbedMetadataSettings {
 	syntaxStyle: SyntaxStyle;
 	caseInsensitiveKeys: boolean;
+	builtInKeysEnabled: boolean;
 	renderOutline: boolean;
 	bold: boolean;
 	italic: boolean;
@@ -21,6 +22,7 @@ export interface EmbedMetadataSettings {
 export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	syntaxStyle: "brackets",
 	caseInsensitiveKeys: false,
+	builtInKeysEnabled: true,
 	renderOutline: false,
 	bold: false,
 	italic: false,
@@ -79,6 +81,18 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.caseInsensitiveKeys)
 					.onChange(async (value) => {
 						this.plugin.settings.caseInsensitiveKeys = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Built-in keys")
+			.setDesc("Enable built-ins like {{filename}}, {{path}}, and {{mtime}}.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.builtInKeysEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.builtInKeysEnabled = value;
 						await this.plugin.saveSettings();
 					});
 			});

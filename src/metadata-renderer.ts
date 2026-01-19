@@ -24,12 +24,17 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 			return;
 		}
 
-		const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!frontmatter) {
+		const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+		if (!frontmatter && !plugin.settings.builtInKeysEnabled) {
 			return;
 		}
 
-		const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
+		const resolveValue = createFrontmatterResolver(
+			frontmatter ?? {},
+			plugin.settings.caseInsensitiveKeys,
+			file,
+			plugin.settings.builtInKeysEnabled
+		);
 		const doc = el.ownerDocument;
 		const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 		const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
@@ -127,12 +132,17 @@ function replaceSyntaxInTextNode(
 }
 
 function refreshRenderedValuesForFile(plugin: EmbedMetadataPlugin, file: TFile): void {
-	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-	if (!frontmatter) {
+	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+	if (!frontmatter && !plugin.settings.builtInKeysEnabled) {
 		return;
 	}
 
-	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
+	const resolveValue = createFrontmatterResolver(
+		frontmatter ?? {},
+		plugin.settings.caseInsensitiveKeys,
+		file,
+		plugin.settings.builtInKeysEnabled
+	);
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxClose = getSyntaxClose(plugin.settings.syntaxStyle);
 	const leaves = plugin.app.workspace.getLeavesOfType("markdown");

@@ -43,6 +43,13 @@ export function refreshLivePreviewForFile(file: TFile): void {
 	}
 }
 
+// Force a Live Preview refresh for all open editor views.
+export function refreshAllLivePreview(): void {
+	for (const instance of livePreviewInstances) {
+		instance.requestRefresh();
+	}
+}
+
 // Build the Live Preview view plugin that renders syntax markers in the editor.
 export function createEditorExtension(plugin: EmbedMetadataPlugin) {
 	return ViewPlugin.fromClass(MetadataViewPlugin.bind(null, plugin), {
@@ -139,8 +146,8 @@ function buildDecorations(
 		return Decoration.none;
 	}
 
-	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-	if (!frontmatter) {
+	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+	if (!frontmatter && !plugin.settings.builtInKeysEnabled) {
 		return Decoration.none;
 	}
 
@@ -150,7 +157,12 @@ function buildDecorations(
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const seenLines = new Set<number>();
-	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
+	const resolveValue = createFrontmatterResolver(
+		frontmatter ?? {},
+		plugin.settings.caseInsensitiveKeys,
+		file,
+		plugin.settings.builtInKeysEnabled
+	);
 
 	const ranges = forceFullScan
 		? [{from: 0, to: view.state.doc.length}]
