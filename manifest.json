@@ -1,7 +1,7 @@
 {
 	"id": "embed-metadata",
 	"name": "Embed Metadata",
-	"version": "0.4.1",
+	"version": "0.5.0",
 	"minAppVersion": "0.15.0",
 	"description": "Render frontmatter metadata (Properties) inside your notes with a lightweight inline syntax.",
 	"author": "Schemen",
