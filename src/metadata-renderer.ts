@@ -1,6 +1,11 @@
 // Reading view renderer that replaces syntax markers in the preview DOM.
-import {TFile} from "obsidian";
-import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
+import {MarkdownView, TFile} from "obsidian";
+import {
+	createFrontmatterResolver,
+	getSyntaxClose,
+	getSyntaxOpen,
+	getSyntaxRegex,
+} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
@@ -62,6 +67,10 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin) {
 			);
 		}
 	});
+
+	plugin.registerEvent(plugin.app.metadataCache.on("changed", (file) => {
+		refreshRenderedValuesForFile(plugin, file);
+	}));
 }
 
 // Replace inline syntax markers in a single text node with rendered spans.
@@ -98,6 +107,7 @@ function replaceSyntaxInTextNode(
 		} else {
 			const span = doc.createElement("span");
 			span.className = "embed-metadata-value";
+			span.dataset.embedMetadataKey = key;
 			renderInlineMarkdown(plugin.app, sourcePath, span, value, plugin);
 			fragment.append(span);
 			didReplace = true;
@@ -113,5 +123,41 @@ function replaceSyntaxInTextNode(
 
 	if (didReplace) {
 		textNode.replaceWith(fragment);
+	}
+}
+
+function refreshRenderedValuesForFile(plugin: EmbedMetadataPlugin, file: TFile): void {
+	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+	if (!frontmatter) {
+		return;
+	}
+
+	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
+	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
+	const syntaxClose = getSyntaxClose(plugin.settings.syntaxStyle);
+	const leaves = plugin.app.workspace.getLeavesOfType("markdown");
+
+	for (const leaf of leaves) {
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView)) {
+			continue;
+		}
+		if (view.file?.path !== file.path) {
+			continue;
+		}
+
+		const rendered = view.containerEl.querySelectorAll<HTMLElement>(".embed-metadata-value[data-embed-metadata-key]");
+		for (const el of Array.from(rendered)) {
+			const key = el.dataset.embedMetadataKey;
+			if (!key) {
+				continue;
+			}
+			const value = resolveValue(key);
+			if (value === null) {
+				el.textContent = `${syntaxOpen}${key}${syntaxClose}`;
+				continue;
+			}
+			renderInlineMarkdown(plugin.app, file.path, el, value, plugin);
+		}
 	}
 }

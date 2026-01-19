@@ -18,6 +18,12 @@ type LineMarkers = {
 	markers: LineMarker[];
 };
 
+type FenceState = {
+	inFence: boolean;
+	fenceChar: string;
+	fenceLen: number;
+};
+
 const livePreviewRefreshEffect = StateEffect.define<null>();
 const livePreviewInstances = new Set<MetadataViewPlugin>();
 
@@ -57,6 +63,7 @@ class MetadataViewPlugin {
 
 	update(update: ViewUpdate) {
 		let needsRebuild = false;
+		let forceFullScan = false;
 
 		if (this.syntaxStyle !== this.plugin.settings.syntaxStyle) {
 			this.syntaxStyle = this.plugin.settings.syntaxStyle;
@@ -86,10 +93,11 @@ class MetadataViewPlugin {
 
 		if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(livePreviewRefreshEffect)))) {
 			needsRebuild = true;
+			forceFullScan = true;
 		}
 
 		if (needsRebuild) {
-			this.decorations = buildDecorations(update.view, this.plugin, this.lineCache);
+			this.decorations = buildDecorations(update.view, this.plugin, this.lineCache, forceFullScan);
 		}
 	}
 
@@ -111,7 +119,8 @@ class MetadataViewPlugin {
 function buildDecorations(
 	view: EditorView,
 	plugin: EmbedMetadataPlugin,
-	lineCache: Map<number, LineMarkers>
+	lineCache: Map<number, LineMarkers>,
+	forceFullScan = false
 ): DecorationSet {
 	if (!view.state.field(editorLivePreviewField)) {
 		return Decoration.none;
@@ -136,23 +145,34 @@ function buildDecorations(
 	const seenLines = new Set<number>();
 	const resolveValue = createFrontmatterResolver(frontmatter, plugin.settings.caseInsensitiveKeys);
 
-	for (const range of view.visibleRanges) {
+	const ranges = forceFullScan
+		? [{from: 0, to: view.state.doc.length}]
+		: view.visibleRanges;
+
+	for (const range of ranges) {
 		const startLine = view.state.doc.lineAt(range.from).number;
 		const endLine = view.state.doc.lineAt(Math.max(range.to - 1, range.from)).number;
+		const fenceState = getFenceStateBeforeLine(view.state.doc, startLine);
 
 		for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+			const line = view.state.doc.line(lineNumber);
+			const {lineInFence, isFenceLine} = updateFenceStateForLine(line.text, fenceState);
+			const inlineCodeRanges = lineInFence || isFenceLine ? [] : getInlineCodeRanges(line.text);
 			if (seenLines.has(lineNumber)) {
 				continue;
 			}
 			seenLines.add(lineNumber);
 
-			const line = view.state.doc.line(lineNumber);
 			const markers = getLineMarkers(lineNumber, line, lineCache, syntaxRegex, syntaxOpen);
 			if (markers.length === 0) {
 				continue;
 			}
 
 			for (const marker of markers) {
+				if (lineInFence || isFenceLine || isMarkerInInlineCode(marker, inlineCodeRanges)) {
+					continue;
+				}
+
 				const start = line.from + marker.from;
 				const end = line.from + marker.to;
 
@@ -210,6 +230,85 @@ function getLineMarkers(
 
 	lineCache.set(lineNumber, {text: line.text, markers});
 	return markers;
+}
+
+function getFenceStateBeforeLine(doc: Text, lineNumber: number): FenceState {
+	const state: FenceState = {inFence: false, fenceChar: "", fenceLen: 0};
+	for (let line = 1; line < lineNumber; line += 1) {
+		updateFenceStateForLine(doc.line(line).text, state);
+	}
+	return state;
+}
+
+function updateFenceStateForLine(
+	lineText: string,
+	state: FenceState
+): {lineInFence: boolean; isFenceLine: boolean} {
+	const wasInFence = state.inFence;
+	const match = lineText.match(/^\s*([`~]{3,})/);
+	let isFenceLine = false;
+
+	if (match) {
+		isFenceLine = true;
+		const marker = match[1] ?? "";
+		const fenceChar = marker[0] ?? "";
+		const fenceLen = marker.length;
+
+		if (!state.inFence) {
+			state.inFence = true;
+			state.fenceChar = fenceChar;
+			state.fenceLen = fenceLen;
+		} else if (fenceChar && fenceChar === state.fenceChar && fenceLen >= state.fenceLen) {
+			state.inFence = false;
+			state.fenceChar = "";
+			state.fenceLen = 0;
+		}
+	}
+
+	return {lineInFence: wasInFence, isFenceLine};
+}
+
+type InlineCodeRange = {from: number; to: number};
+
+function getInlineCodeRanges(text: string): InlineCodeRange[] {
+	const ranges: InlineCodeRange[] = [];
+	let i = 0;
+	let openTicks: string | null = null;
+	let openStart = 0;
+
+	while (i < text.length) {
+		if (text[i] !== "`") {
+			i += 1;
+			continue;
+		}
+
+		let j = i;
+		while (j < text.length && text[j] === "`") {
+			j += 1;
+		}
+		const ticks = text.slice(i, j);
+
+		if (openTicks === null) {
+			openTicks = ticks;
+			openStart = i;
+		} else if (ticks === openTicks) {
+			ranges.push({from: openStart, to: j});
+			openTicks = null;
+		}
+
+		i = j;
+	}
+
+	return ranges;
+}
+
+function isMarkerInInlineCode(marker: LineMarker, ranges: InlineCodeRange[]): boolean {
+	for (const range of ranges) {
+		if (rangesOverlap(marker.from, marker.to, range.from, range.to)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 function pruneLineCache(lineCache: Map<number, LineMarkers>, maxLine: number): void {
