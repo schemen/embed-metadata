@@ -1,4 +1,5 @@
 // Utils for all other modules
+import {MarkdownView, Plugin, TFile} from "obsidian";
 
 // Syntax parsing and frontmatter resolution utilities.
 export type SyntaxStyle = "brackets" | "doubleBraces";
@@ -26,6 +27,65 @@ export function getSyntaxTriggerRegex(style: SyntaxStyle): RegExp {
 	return style === "doubleBraces"
 		? /\{\{([A-Za-z0-9_.-]*)$/
 		: /\[%([A-Za-z0-9_.-]*)$/;
+}
+
+// Refresh markdown views after metadata changes.
+export type MarkdownRefresher = {
+	refreshAll: () => void;
+	refreshForFile: (file: TFile) => void;
+};
+
+export function registerMarkdownRefresh(
+	plugin: Plugin,
+	onLivePreviewRefresh?: (file: TFile) => void
+): MarkdownRefresher {
+	const refreshForFile = (file: TFile) => {
+		const leaves = plugin.app.workspace.getLeavesOfType("markdown");
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) {
+				continue;
+			}
+			if (view.file?.path !== file.path) {
+				continue;
+			}
+
+			view.previewMode?.rerender(true);
+
+			const editor = view.editor;
+			if (editor) {
+				const cursor = editor.getCursor();
+				editor.setCursor(cursor);
+				editor.refresh();
+			}
+		}
+	};
+
+	const refreshAll = () => {
+		const leaves = plugin.app.workspace.getLeavesOfType("markdown");
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) {
+				continue;
+			}
+
+			view.previewMode?.rerender(true);
+
+			const editor = view.editor;
+			if (editor) {
+				const cursor = editor.getCursor();
+				editor.setCursor(cursor);
+				editor.refresh();
+			}
+		}
+	};
+
+	plugin.registerEvent(plugin.app.metadataCache.on("changed", (file) => {
+		refreshForFile(file);
+		onLivePreviewRefresh?.(file);
+	}));
+
+	return {refreshAll, refreshForFile};
 }
 
 // Resolve a dot-path in frontmatter and stringify the result.

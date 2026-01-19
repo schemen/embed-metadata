@@ -1,17 +1,20 @@
-import {MarkdownView, Plugin} from "obsidian";
-import {createEditorExtension} from "./editor-metadata";
+import {Plugin} from "obsidian";
+import {createEditorExtension, refreshLivePreviewForFile} from "./editor-metadata";
 import {registerMetadataRenderer} from "./metadata-renderer";
 import {MetadataSuggest} from "./metadata-suggest";
 import {registerOutlineRenderer} from "./outline-renderer";
+import {MarkdownRefresher, registerMarkdownRefresh} from "./metadata-utils";
 import {DEFAULT_SETTINGS, EmbedMetadataSettingTab, EmbedMetadataSettings} from "./settings";
 
 export default class EmbedMetadata extends Plugin {
 	settings: EmbedMetadataSettings;
 	private refreshOutlineViews: (() => void) | null = null;
+	private markdownRefresher: MarkdownRefresher | null = null;
 
 	async onload() {
 		await this.loadSettings();
 
+		this.markdownRefresher = registerMarkdownRefresh(this, refreshLivePreviewForFile);
 		this.registerEditorExtension(createEditorExtension(this));
 		registerMetadataRenderer(this);
 		this.refreshOutlineViews = registerOutlineRenderer(this);
@@ -25,27 +28,7 @@ export default class EmbedMetadata extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-		this.refreshAllMarkdownViews();
+		this.markdownRefresher?.refreshAll();
 		this.refreshOutlineViews?.();
-	}
-
-	// Refresh rendered markdown after a change of setting
-	private refreshAllMarkdownViews() {
-		const leaves = this.app.workspace.getLeavesOfType("markdown");
-		for (const leaf of leaves) {
-			const view = leaf.view;
-			if (!(view instanceof MarkdownView)) {
-				continue;
-			}
-
-			view.previewMode?.rerender(true);
-
-			const editor = view.editor;
-			if (editor) {
-				const cursor = editor.getCursor();
-				editor.setCursor(cursor);
-				editor.refresh();
-			}
-		}
 	}
 }

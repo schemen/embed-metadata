@@ -1,6 +1,6 @@
 // Live Preview renderer using CodeMirror decorations
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
-import {RangeSetBuilder, Text} from "@codemirror/state";
+import {RangeSetBuilder, StateEffect, Text} from "@codemirror/state";
 import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
 import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
@@ -18,60 +18,93 @@ type LineMarkers = {
 	markers: LineMarker[];
 };
 
+const livePreviewRefreshEffect = StateEffect.define<null>();
+const livePreviewInstances = new Set<MetadataViewPlugin>();
+
+// Force a Live Preview refresh for a given file after metadata changes.
+export function refreshLivePreviewForFile(file: TFile): void {
+	for (const instance of livePreviewInstances) {
+		if (instance.matchesFile(file)) {
+			instance.requestRefresh();
+		}
+	}
+}
+
 // Build the Live Preview view plugin that renders syntax markers in the editor.
 export function createEditorExtension(plugin: EmbedMetadataPlugin) {
-	return ViewPlugin.fromClass(
-		class {
-			decorations: DecorationSet;
-			private cursorMarkerKey: string;
-			private lineCache: Map<number, LineMarkers>;
-			private syntaxStyle: string;
+	return ViewPlugin.fromClass(MetadataViewPlugin.bind(null, plugin), {
+		decorations: (value) => value.decorations,
+	});
+}
 
-			constructor(view: EditorView) {
-				this.lineCache = new Map();
-				this.syntaxStyle = plugin.settings.syntaxStyle;
-				this.decorations = buildDecorations(view, plugin, this.lineCache);
-				this.cursorMarkerKey = getCursorMarkerKey(view, plugin);
-			}
+class MetadataViewPlugin {
+	decorations: DecorationSet;
+	private plugin: EmbedMetadataPlugin;
+	private view: EditorView;
+	private cursorMarkerKey: string;
+	private lineCache: Map<number, LineMarkers>;
+	private syntaxStyle: string;
 
-			update(update: ViewUpdate) {
-				let needsRebuild = false;
+	constructor(plugin: EmbedMetadataPlugin, view: EditorView) {
+		this.plugin = plugin;
+		this.view = view;
+		this.lineCache = new Map();
+		this.syntaxStyle = plugin.settings.syntaxStyle;
+		this.decorations = buildDecorations(view, plugin, this.lineCache);
+		this.cursorMarkerKey = getCursorMarkerKey(view, plugin);
+		livePreviewInstances.add(this);
+	}
 
-				if (this.syntaxStyle !== plugin.settings.syntaxStyle) {
-					this.syntaxStyle = plugin.settings.syntaxStyle;
-					this.lineCache.clear();
-					needsRebuild = true;
-				}
+	update(update: ViewUpdate) {
+		let needsRebuild = false;
 
-				if (update.docChanged) {
-					this.decorations = this.decorations.map(update.changes);
-					pruneLineCache(this.lineCache, update.state.doc.lines);
-					if (shouldRebuildForChanges(update, plugin)) {
-						needsRebuild = true;
-					}
-				}
-
-				if (update.viewportChanged) {
-					needsRebuild = true;
-				}
-
-				if (update.docChanged || update.selectionSet) {
-					const nextCursorMarkerKey = getCursorMarkerKey(update.view, plugin);
-					if (nextCursorMarkerKey !== this.cursorMarkerKey) {
-						this.cursorMarkerKey = nextCursorMarkerKey;
-						needsRebuild = true;
-					}
-				}
-
-				if (needsRebuild) {
-					this.decorations = buildDecorations(update.view, plugin, this.lineCache);
-				}
-			}
-		},
-		{
-			decorations: (value) => value.decorations,
+		if (this.syntaxStyle !== this.plugin.settings.syntaxStyle) {
+			this.syntaxStyle = this.plugin.settings.syntaxStyle;
+			this.lineCache.clear();
+			needsRebuild = true;
 		}
-	);
+
+		if (update.docChanged) {
+			this.decorations = this.decorations.map(update.changes);
+			pruneLineCache(this.lineCache, update.state.doc.lines);
+			if (shouldRebuildForChanges(update, this.plugin)) {
+				needsRebuild = true;
+			}
+		}
+
+		if (update.viewportChanged) {
+			needsRebuild = true;
+		}
+
+		if (update.docChanged || update.selectionSet) {
+			const nextCursorMarkerKey = getCursorMarkerKey(update.view, this.plugin);
+			if (nextCursorMarkerKey !== this.cursorMarkerKey) {
+				this.cursorMarkerKey = nextCursorMarkerKey;
+				needsRebuild = true;
+			}
+		}
+
+		if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(livePreviewRefreshEffect)))) {
+			needsRebuild = true;
+		}
+
+		if (needsRebuild) {
+			this.decorations = buildDecorations(update.view, this.plugin, this.lineCache);
+		}
+	}
+
+	destroy() {
+		livePreviewInstances.delete(this);
+	}
+
+	matchesFile(file: TFile): boolean {
+		const info = this.view.state.field(editorInfoField);
+		return info?.file?.path === file.path;
+	}
+
+	requestRefresh(): void {
+		this.view.dispatch({effects: livePreviewRefreshEffect.of(null)});
+	}
 }
 
 // Scan visible ranges and replace syntax markers with widgets (skipping active edits).
