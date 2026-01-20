@@ -6,6 +6,12 @@ The intent for developing this is as a lightweight replacement for Dataviews `=t
 ## Demo
 ![demo.web](media/demo.gif)
 
+## Installation
+
+This plugin is not yet added to the Community List, pending approval. You can either manually install it by creating a folder within your `.obsidian/plugin/` folder called `embed-metadata` and and download a release within, resulting in a `main.js`, `style.css` and `manifest.js`.
+
+The easiest way would be by adding this repository to [BRAT](https://github.com/TfTHacker/obsidian42-brat), a plugin installer from the community which you can install via  Obsidian.
+
 ## Usage
 Add frontmatter (Properties) to a note:
 
