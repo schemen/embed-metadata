@@ -32,11 +32,22 @@ the syntax as plain text. If a key is missing, the marker is left unchanged.
 Inline code and code blocks are ignored in preview. If a key exists but has no
 value, the marker renders empty.
 
+Built-in keys (when enabled):
+- `filename` (full file name with extension)
+- `basename` (file name without extension)
+- `extension`
+- `path` (vault-relative path)
+- `folder` (parent folder path)
+- `link` (wikilink to the file)
+- `ctime` (created time)
+- `mtime` (last modified time)
+
 ## Settings
 
 Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
 - Optional case-insensitive key lookup
+- Optional built-in keys (enabled by default; frontmatter keys take priority)
 - Optional outline rendering (experimental; replaces markers in the Outline sidebar)
 
 Visual look options apply in Live Preview:
