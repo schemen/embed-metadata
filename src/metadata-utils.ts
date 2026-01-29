@@ -70,13 +70,10 @@ export function registerMarkdownRefresh(
 				continue;
 			}
 
-			view.previewMode?.rerender(true);
-
-			const editor = view.editor;
-			if (editor) {
-				const cursor = editor.getCursor();
-				editor.setCursor(cursor);
-				editor.refresh();
+			if (view.getMode() === "preview") {
+				const scroll = view.previewMode?.getScroll?.() ?? 0;
+				view.previewMode?.rerender(true);
+				view.previewMode?.applyScroll?.(scroll);
 			}
 		}
 	};
@@ -89,13 +86,10 @@ export function registerMarkdownRefresh(
 				continue;
 			}
 
-			view.previewMode?.rerender(true);
-
-			const editor = view.editor;
-			if (editor) {
-				const cursor = editor.getCursor();
-				editor.setCursor(cursor);
-				editor.refresh();
+			if (view.getMode() === "preview") {
+				const scroll = view.previewMode?.getScroll?.() ?? 0;
+				view.previewMode?.rerender(true);
+				view.previewMode?.applyScroll?.(scroll);
 			}
 		}
 	};
