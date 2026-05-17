@@ -62,7 +62,7 @@ export class MetadataSuggest extends EditorSuggest<string> {
 	}
 
 	// Insert the selected key and close the syntax marker if needed.
-	selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
+	selectSuggestion(value: string, _evt: MouseEvent | KeyboardEvent): void {
 		if (!this.context) {
 			return;
 		}

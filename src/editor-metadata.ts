@@ -506,7 +506,7 @@ function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin
 	const nextFrontmatter = getFrontmatterRange(nextDoc);
 	let needsRebuild = false;
 
-	update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+	update.changes.iterChanges((fromA, toA, fromB, toB, _inserted) => {
 		if (needsRebuild) {
 			return;
 		}
@@ -668,31 +668,23 @@ class MetadataWidget extends WidgetType {
 
 	// Render the replacement widget node for a single syntax marker.
 	toDOM(): HTMLElement {
-		const span = document.createElement("span");
+		const span = window.activeDocument.createElement("span");
 		applyValueStyles(span, this.plugin.settings);
 		let container = span;
 		if (this.markdownStyle.highlight) {
-			const mark = document.createElement("mark");
-			mark.classList.add("cm-highlight");
-			container.appendChild(mark);
+			const mark = container.createEl("mark", {cls: "cm-highlight"});
 			container = mark;
 		}
 		if (this.markdownStyle.strike) {
-			const del = document.createElement("del");
-			del.classList.add("cm-strikethrough");
-			container.appendChild(del);
+			const del = container.createEl("del", {cls: "cm-strikethrough"});
 			container = del;
 		}
 		if (this.markdownStyle.bold) {
-			const strong = document.createElement("strong");
-			strong.classList.add("cm-strong");
-			container.appendChild(strong);
+			const strong = container.createEl("strong", {cls: "cm-strong"});
 			container = strong;
 		}
 		if (this.markdownStyle.italic) {
-			const em = document.createElement("em");
-			em.classList.add("cm-em");
-			container.appendChild(em);
+			const em = container.createEl("em", {cls: "cm-em"});
 			container = em;
 		}
 		renderInlineMarkdown(this.plugin.app, this.sourcePath, container, this.value, this.plugin);

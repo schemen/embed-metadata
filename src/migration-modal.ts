@@ -98,7 +98,7 @@ export class MigrationModal extends Modal {
 				entry.selected = checkbox.checked;
 			});
 
-			row.createEl("span", {
+			row.createSpan({
 				text: `${entry.file.path} (${entry.count})`,
 			});
 		}
