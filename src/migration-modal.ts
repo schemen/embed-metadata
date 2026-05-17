@@ -40,6 +40,9 @@ export class MigrationModal extends Modal {
 				? "Finds backticked `=this.key` and converts to the selected syntax format."
 				: "Finds other syntax formats and converts them to the selected syntax format.",
 		});
+		contentEl.createEl("p", {
+			text: "This scans Markdown files in your vault only after you open this review, and only edits files you confirm.",
+		});
 
 		this.listEl = contentEl.createDiv({cls: "embed-metadata-migration-list"});
 		this.listEl.setText("Scanning files...");
@@ -98,7 +101,7 @@ export class MigrationModal extends Modal {
 				entry.selected = checkbox.checked;
 			});
 
-			row.createEl("span", {
+			row.createSpan({
 				text: `${entry.file.path} (${entry.count})`,
 			});
 		}

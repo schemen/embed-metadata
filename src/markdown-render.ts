@@ -18,8 +18,7 @@ export function renderInlineMarkdown(
 
 	el.textContent = "";
 
-	const temp = document.createElement("span");
-	el.appendChild(temp);
+	const temp = el.createSpan();
 
 	void MarkdownRenderer.render(app, value, temp, sourcePath, component).then(() => {
 		if (!temp.parentElement) {
@@ -57,8 +56,7 @@ export function renderInlineMarkdownText(
 	}
 
 	el.textContent = "";
-	const temp = document.createElement("span");
-	el.appendChild(temp);
+	const temp = el.createSpan();
 
 	void MarkdownRenderer.render(app, value, temp, sourcePath, component).then(() => {
 		if (!temp.parentElement) {

@@ -74,6 +74,8 @@ You can migrate existing notes:
 
 Each migration opens a review modal listing matching files with counts. Deselect any
 files you want to skip, then confirm the migration (it edits your files).
+Vault-wide Markdown file scanning is used only for these user-initiated migrations, not during
+normal rendering or autocomplete.
 
 ## Autocomplete
 Type the configured opener (`[%` or `{{`) to see a dropdown of frontmatter keys
