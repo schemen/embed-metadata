@@ -1,5 +1,5 @@
 import {Plugin} from "obsidian";
-import {createEditorExtension, refreshAllLivePreview, refreshLivePreviewForFile} from "./editor-metadata";
+import {createEditorExtension, refreshAllLivePreview, refreshLivePreviewForDependents} from "./editor-metadata";
 import {registerMetadataRenderer} from "./metadata-renderer";
 import {MetadataSuggest} from "./metadata-suggest";
 import {registerOutlineRenderer} from "./outline-renderer";
@@ -14,9 +14,12 @@ export default class EmbedMetadata extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.markdownRefresher = registerMarkdownRefresh(this, refreshLivePreviewForFile);
+		const refreshReadingView = registerMetadataRenderer(this);
+		this.markdownRefresher = registerMarkdownRefresh(this, (file) => {
+			refreshLivePreviewForDependents(file);
+			refreshReadingView(file);
+		});
 		this.registerEditorExtension(createEditorExtension(this));
-		registerMetadataRenderer(this);
 		this.refreshOutlineViews = registerOutlineRenderer(this);
 		this.registerEditorSuggest(new MetadataSuggest(this));
 		this.addSettingTab(new EmbedMetadataSettingTab(this.app, this));

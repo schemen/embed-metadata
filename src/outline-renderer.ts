@@ -1,5 +1,5 @@
 import {TFile, WorkspaceLeaf} from "obsidian";
-import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
+import {createMetadataResolver, findMetadataMarkers, getSyntaxOpen} from "./metadata-utils";
 import {renderInlineMarkdownText} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
@@ -71,20 +71,13 @@ function updateOutlineView(plugin: EmbedMetadataPlugin, leaf: WorkspaceLeaf): vo
 		return;
 	}
 
-	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-	if (!frontmatter && !plugin.settings.builtInKeysEnabled) {
-		resetOutlineView(leaf);
-		return;
-	}
-
-	const resolveValue = createFrontmatterResolver(
-		frontmatter ?? {},
-		plugin.settings.caseInsensitiveKeys,
+	const resolver = createMetadataResolver(
+		plugin.app,
 		file,
+		plugin.settings.caseInsensitiveKeys,
 		plugin.settings.builtInKeysEnabled
 	);
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
-	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const items = Array.from(container.querySelectorAll<HTMLElement>(OUTLINE_ITEM_SELECTOR));
 
 	for (const item of items) {
@@ -101,15 +94,19 @@ function updateOutlineView(plugin: EmbedMetadataPlugin, leaf: WorkspaceLeaf): vo
 
 		let next = raw;
 		if (raw.includes(syntaxOpen)) {
-			syntaxRegex.lastIndex = 0;
-			next = raw.replace(syntaxRegex, (fullMatch: string, key: string) => {
-			const trimmed = (key ?? "").trim();
-			if (!trimmed) {
-				return fullMatch;
+			const markers = findMetadataMarkers(raw, plugin.settings.syntaxStyle);
+			if (markers.length > 0) {
+				let lastIndex = 0;
+				const parts: string[] = [];
+				for (const marker of markers) {
+					parts.push(raw.slice(lastIndex, marker.from));
+					const result = resolver.resolve(marker);
+					parts.push(result.resolved ? result.value : marker.marker);
+					lastIndex = marker.to;
+				}
+				parts.push(raw.slice(lastIndex));
+				next = parts.join("");
 			}
-			const value = resolveValue(trimmed);
-			return value === null ? fullMatch : value;
-		});
 		}
 
 		const previous = item.dataset.embedMetadataRendered ?? "";
