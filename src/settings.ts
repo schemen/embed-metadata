@@ -10,8 +10,6 @@ export interface EmbedMetadataSettings {
 	bold: boolean;
 	italic: boolean;
 	underline: boolean;
-	underlineColorEnabled: boolean;
-	underlineColor: string;
 	highlight: boolean;
 	highlightColorEnabled: boolean;
 	highlightColor: string;
@@ -27,8 +25,6 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	bold: false,
 	italic: false,
 	underline: true,
-	underlineColorEnabled: false,
-	underlineColor: "#000000",
 	highlight: false,
 	highlightColorEnabled: false,
 	highlightColor: "#fff59d",
@@ -145,26 +141,6 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.underline)
 					.onChange(async (value) => {
 						this.plugin.settings.underline = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Underline color")
-			.setDesc("Override underline color (otherwise uses text color).")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.underlineColorEnabled)
-					.onChange(async (value) => {
-						this.plugin.settings.underlineColorEnabled = value;
-						await this.plugin.saveSettings();
-					});
-			})
-			.addColorPicker((picker) => {
-				picker
-					.setValue(this.plugin.settings.underlineColor)
-					.onChange(async (value) => {
-						this.plugin.settings.underlineColor = value;
 						await this.plugin.saveSettings();
 					});
 			});

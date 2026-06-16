@@ -14,17 +14,18 @@
 
 .embed-metadata-underline {
 	text-decoration: underline;
-	text-decoration-color: var(--embed-metadata-underline-color, currentColor);
 }
 
 :where(.embed-metadata-strike) {
 	text-decoration: line-through;
-	text-decoration-color: currentColor;
 }
 
+/* Underline and strike can't share text-decoration without the partially
+   supported multi-keyword shorthand, so render the underline as a border
+   when both apply. */
 .embed-metadata-underline.embed-metadata-strike {
-	text-decoration: underline line-through;
-	text-decoration-color: var(--embed-metadata-underline-color, currentColor);
+	text-decoration: line-through;
+	border-bottom: 1px solid currentColor;
 }
 
 :where(.embed-metadata-highlight) {

@@ -7,8 +7,6 @@ export function getStyleKey(settings: EmbedMetadataSettings): string {
 		settings.bold ? "1" : "0",
 		settings.italic ? "1" : "0",
 		settings.underline ? "1" : "0",
-		settings.underlineColorEnabled ? "1" : "0",
-		settings.underlineColor,
 		settings.highlight ? "1" : "0",
 		settings.highlightColorEnabled ? "1" : "0",
 		settings.highlightColor,
@@ -30,9 +28,6 @@ export function applyValueStyles(el: HTMLElement, settings: EmbedMetadataSetting
 
 	if (settings.underline) {
 		el.classList.add("embed-metadata-underline");
-		if (settings.underlineColorEnabled) {
-			el.style.setProperty("--embed-metadata-underline-color", settings.underlineColor);
-		}
 	}
 
 	if (settings.highlight) {
