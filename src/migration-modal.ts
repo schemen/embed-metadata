@@ -1,6 +1,6 @@
 // UI to review and run syntax migrations across the vault
 import {App, Modal, Notice, TFile} from "obsidian";
-import {getSyntaxClose, getSyntaxOpen, getSyntaxRegex, SyntaxStyle} from "./metadata-utils";
+import {findMetadataMarkers, getSyntaxClose, getSyntaxOpen, SyntaxStyle} from "./metadata-utils";
 import {EmbedMetadataPlugin} from "./settings";
 
 type MigrationMode = "dataview" | "otherSyntax";
@@ -118,7 +118,7 @@ export class MigrationModal extends Modal {
 			if (style === current) {
 				continue;
 			}
-			total += countRegexMatches(getSyntaxRegex(style), content);
+			total += findMetadataMarkers(content, style).length;
 		}
 		return total;
 	}
@@ -191,9 +191,31 @@ function replaceOtherSyntax(
 		if (style === currentStyle) {
 			continue;
 		}
-		updated = updated.replace(getSyntaxRegex(style), (_, key: string) => `${open}${key}${close}`);
+		updated = replaceSyntaxMarkers(updated, style, open, close);
 	}
 	return updated;
+}
+
+function replaceSyntaxMarkers(
+	content: string,
+	style: SyntaxStyle,
+	open: string,
+	close: string
+): string {
+	const markers = findMetadataMarkers(content, style);
+	if (markers.length === 0) {
+		return content;
+	}
+
+	let lastIndex = 0;
+	const parts: string[] = [];
+	for (const marker of markers) {
+		parts.push(content.slice(lastIndex, marker.from));
+		parts.push(`${open}${marker.raw}${close}`);
+		lastIndex = marker.to;
+	}
+	parts.push(content.slice(lastIndex));
+	return parts.join("");
 }
 
 function countRegexMatches(regex: RegExp, content: string): number {

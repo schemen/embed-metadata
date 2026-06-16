@@ -33,10 +33,29 @@ We recommend using those tags: [%tags]
 The Author called [%author_name] is really funny!
 ```
 
+You can also reference properties from another note by putting an Obsidian link
+target inside the marker, followed by `#property`:
+
+```markdown
+Current status: [%[[Project]]#status]
+Project owner: [%[[Projects/Website|Website project]]#owner]
+Review date: [%[Website project](Projects/Website.md)#review_date]
+```
+
+The same target syntax works with double braces when that syntax format is
+selected:
+
+```markdown
+Current status: {{[[Project]]#status}}
+Review date: {{[Website project](Projects/Website.md)#review_date}}
+```
+
 The syntax markers are replaced in reading view and live preview. Source mode keeps
-the syntax as plain text. If a key is missing, the marker is left unchanged.
-Inline code and code blocks are ignored in preview. If a key exists but has no
-value, the marker renders empty.
+the syntax as plain text. If a local key, target note, or target property is
+missing, the marker is left unchanged. Inline code and code blocks are ignored in
+preview. If a key exists but has no value, the marker renders empty. Markdown in
+remote property values is rendered relative to the target note, so links stored
+in that property keep the same meaning.
 
 Built-in keys (when enabled):
 - `filename` (full file name with extension)
@@ -79,7 +98,10 @@ normal rendering or autocomplete.
 
 ## Autocomplete
 Type the configured opener (`[%` or `{{`) to see a dropdown of frontmatter keys
-from the current file. Results are sorted alphabetically and update as you type.
+from the current file. For remote references, use Obsidian's normal file
+autocomplete inside `[[...]]`, then type `#` after the completed target to see
+that note's property keys. Results are sorted alphabetically and update as you
+type.
 
 ## Disclaimer
 AI was used during the development of this project.

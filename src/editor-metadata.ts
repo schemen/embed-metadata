@@ -2,20 +2,23 @@
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
 import {RangeSetBuilder, StateEffect, Text} from "@codemirror/state";
 import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
-import {createFrontmatterResolver, getSyntaxOpen, getSyntaxRegex} from "./metadata-utils";
+import {
+	createMetadataDependencies,
+	createMetadataResolver,
+	findMetadataMarkers,
+	getSyntaxOpen,
+	metadataDependenciesInclude,
+	type MetadataDependencies,
+	type MetadataMarker,
+	type SyntaxStyle,
+} from "./metadata-utils";
 import {renderInlineMarkdown} from "./markdown-render";
 import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
 
-type LineMarker = {
-	from: number;
-	to: number;
-	key: string;
-};
-
 type LineMarkers = {
 	text: string;
-	markers: LineMarker[];
+	markers: MetadataMarker[];
 };
 
 type MarkdownStyle = {
@@ -34,10 +37,10 @@ type FenceState = {
 const livePreviewRefreshEffect = StateEffect.define<null>();
 const livePreviewInstances = new Set<MetadataViewPlugin>();
 
-// Force a Live Preview refresh for a given file after metadata changes.
-export function refreshLivePreviewForFile(file: TFile): void {
+// Refresh only the Live Preview views whose rendered values depend on `file`.
+export function refreshLivePreviewForDependents(file: TFile): void {
 	for (const instance of livePreviewInstances) {
-		if (instance.matchesFile(file)) {
+		if (instance.dependsOn(file)) {
 			instance.requestRefresh();
 		}
 	}
@@ -64,13 +67,16 @@ class MetadataViewPlugin {
 	private cursorMarkerKey: string;
 	private lineCache: Map<number, LineMarkers>;
 	private syntaxStyle: string;
+	private dependencies: MetadataDependencies;
 
 	constructor(plugin: EmbedMetadataPlugin, view: EditorView) {
 		this.plugin = plugin;
 		this.view = view;
 		this.lineCache = new Map();
 		this.syntaxStyle = plugin.settings.syntaxStyle;
-		this.decorations = buildDecorations(view, plugin, this.lineCache);
+		const build = buildDecorations(view, plugin, this.lineCache);
+		this.decorations = build.decorations;
+		this.dependencies = build.dependencies;
 		this.cursorMarkerKey = getCursorMarkerKey(view, plugin);
 		livePreviewInstances.add(this);
 	}
@@ -111,7 +117,9 @@ class MetadataViewPlugin {
 		}
 
 		if (needsRebuild) {
-			this.decorations = buildDecorations(update.view, this.plugin, this.lineCache, forceFullScan);
+			const build = buildDecorations(update.view, this.plugin, this.lineCache, forceFullScan);
+			this.decorations = build.decorations;
+			this.dependencies = build.dependencies;
 		}
 	}
 
@@ -119,9 +127,10 @@ class MetadataViewPlugin {
 		livePreviewInstances.delete(this);
 	}
 
-	matchesFile(file: TFile): boolean {
-		const info = this.view.state.field(editorInfoField);
-		return info?.file?.path === file.path;
+	// Dependencies cover the last built ranges; markers scrolled into view are
+	// re-resolved by the viewport rebuild, so visible coverage is sufficient.
+	dependsOn(file: TFile): boolean {
+		return metadataDependenciesInclude(this.dependencies, file);
 	}
 
 	requestRefresh(): void {
@@ -129,38 +138,37 @@ class MetadataViewPlugin {
 	}
 }
 
+type DecorationBuild = {
+	decorations: DecorationSet;
+	dependencies: MetadataDependencies;
+};
+
 // Scan visible ranges and replace syntax markers with widgets (skipping active edits).
 function buildDecorations(
 	view: EditorView,
 	plugin: EmbedMetadataPlugin,
 	lineCache: Map<number, LineMarkers>,
 	forceFullScan = false
-): DecorationSet {
+): DecorationBuild {
 	if (!view.state.field(editorLivePreviewField)) {
-		return Decoration.none;
+		return {decorations: Decoration.none, dependencies: createMetadataDependencies()};
 	}
 
 	const info = view.state.field(editorInfoField);
 	const file = info?.file;
 	if (!file || !(file instanceof TFile)) {
-		return Decoration.none;
-	}
-
-	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-	if (!frontmatter && !plugin.settings.builtInKeysEnabled) {
-		return Decoration.none;
+		return {decorations: Decoration.none, dependencies: createMetadataDependencies()};
 	}
 
 	const builder = new RangeSetBuilder<Decoration>();
 	const selectionRanges = view.state.selection.ranges;
 	const styleKey = getStyleKey(plugin.settings);
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
-	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const seenLines = new Set<number>();
-	const resolveValue = createFrontmatterResolver(
-		frontmatter ?? {},
-		plugin.settings.caseInsensitiveKeys,
+	const resolver = createMetadataResolver(
+		plugin.app,
 		file,
+		plugin.settings.caseInsensitiveKeys,
 		plugin.settings.builtInKeysEnabled
 	);
 
@@ -181,7 +189,7 @@ function buildDecorations(
 			}
 			seenLines.add(lineNumber);
 
-			const markers = getLineMarkers(lineNumber, line, lineCache, syntaxRegex, syntaxOpen);
+			const markers = getLineMarkers(lineNumber, line, lineCache, plugin.settings.syntaxStyle, syntaxOpen);
 			if (markers.length === 0) {
 				continue;
 			}
@@ -211,8 +219,8 @@ function buildDecorations(
 					continue;
 				}
 
-				const value = resolveValue(marker.key);
-				if (value === null) {
+				const result = resolver.resolve(marker);
+				if (!result.resolved) {
 					continue;
 				}
 
@@ -226,7 +234,13 @@ function buildDecorations(
 					start,
 					end,
 					Decoration.replace({
-						widget: new MetadataWidget(value, file.path, plugin, styleKey, markdownStyle),
+						widget: new MetadataWidget(
+							result.value,
+							result.targetFile.path,
+							plugin,
+							styleKey,
+							markdownStyle
+						),
 						inclusive: false,
 					})
 				);
@@ -234,42 +248,31 @@ function buildDecorations(
 		}
 	}
 
-	return builder.finish();
+	return {decorations: builder.finish(), dependencies: resolver.dependencies};
 }
 
 function getLineMarkers(
 	lineNumber: number,
 	line: {from: number; text: string},
 	lineCache: Map<number, LineMarkers>,
-	syntaxRegex: RegExp,
+	syntaxStyle: SyntaxStyle,
 	syntaxOpen: string
-): LineMarker[] {
+): MetadataMarker[] {
 	const cached = lineCache.get(lineNumber);
 	if (cached && cached.text === line.text) {
 		return cached.markers;
 	}
 
-	const markers: LineMarker[] = [];
+	const markers: MetadataMarker[] = [];
 	if (line.text.includes(syntaxOpen)) {
-		syntaxRegex.lastIndex = 0;
-		let match: RegExpExecArray | null;
-		while ((match = syntaxRegex.exec(line.text)) !== null) {
-			const key = (match[1] ?? "").trim();
-			if (!key) {
-				continue;
-			}
-
-			const start = match.index;
-			const end = start + match[0].length;
-			markers.push({from: start, to: end, key});
-		}
+		markers.push(...findMetadataMarkers(line.text, syntaxStyle));
 	}
 
 	lineCache.set(lineNumber, {text: line.text, markers});
 	return markers;
 }
 
-function maskMarkerText(text: string, markers: LineMarker[]): string {
+function maskMarkerText(text: string, markers: MetadataMarker[]): string {
 	if (markers.length === 0) {
 		return text;
 	}
@@ -357,7 +360,7 @@ function getInlineCodeRanges(text: string): InlineCodeRange[] {
 	return ranges;
 }
 
-function isMarkerInInlineCode(marker: LineMarker, ranges: InlineCodeRange[]): boolean {
+function isMarkerInInlineCode(marker: MetadataMarker, ranges: InlineCodeRange[]): boolean {
 	for (const range of ranges) {
 		if (rangesOverlap(marker.from, marker.to, range.from, range.to)) {
 			return true;
@@ -455,7 +458,7 @@ function findInlineRangeAt(pos: number, ranges: InlineCodeRange[]): InlineCodeRa
 }
 
 function getMarkdownStyleForMarker(
-	marker: LineMarker,
+	marker: MetadataMarker,
 	emphasisRanges: EmphasisRange[],
 	strikeRanges: DelimitedRange[],
 	highlightRanges: DelimitedRange[]
@@ -499,7 +502,6 @@ function pruneLineCache(lineCache: Map<number, LineMarkers>, maxLine: number): v
 
 function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin): boolean {
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
-	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const nextDoc = update.state.doc;
 	const prevDoc = update.startState.doc;
 	const prevFrontmatter = getFrontmatterRange(prevDoc);
@@ -521,12 +523,12 @@ function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin
 			return;
 		}
 
-		if (changeTouchesMarker(prevDoc, fromA, toA, syntaxRegex, syntaxOpen)) {
+		if (changeTouchesMarker(prevDoc, fromA, toA, plugin.settings.syntaxStyle, syntaxOpen)) {
 			needsRebuild = true;
 			return;
 		}
 
-		if (changeTouchesMarker(nextDoc, fromB, toB, syntaxRegex, syntaxOpen)) {
+		if (changeTouchesMarker(nextDoc, fromB, toB, plugin.settings.syntaxStyle, syntaxOpen)) {
 			needsRebuild = true;
 		}
 	});
@@ -538,7 +540,7 @@ function changeTouchesMarker(
 	doc: Text,
 	from: number,
 	to: number,
-	syntaxRegex: RegExp,
+	syntaxStyle: SyntaxStyle,
 	syntaxOpen: string
 ): boolean {
 	const safeTo = Math.max(to - 1, from);
@@ -551,11 +553,9 @@ function changeTouchesMarker(
 			continue;
 		}
 
-		syntaxRegex.lastIndex = 0;
-		let match: RegExpExecArray | null;
-		while ((match = syntaxRegex.exec(line.text)) !== null) {
-			const start = line.from + match.index;
-			const end = start + match[0].length;
+		for (const marker of findMetadataMarkers(line.text, syntaxStyle)) {
+			const start = line.from + marker.from;
+			const end = line.from + marker.to;
 			if (rangesOverlap(from, to, start, end)) {
 				return true;
 			}
@@ -594,7 +594,6 @@ function getFrontmatterRange(doc: Text): {from: number; to: number} | null {
 
 function getCursorMarkerKey(view: EditorView, plugin: EmbedMetadataPlugin): string {
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
-	const syntaxRegex = getSyntaxRegex(plugin.settings.syntaxStyle);
 	const markerKeys: string[] = [];
 
 	for (const range of view.state.selection.ranges) {
@@ -608,11 +607,9 @@ function getCursorMarkerKey(view: EditorView, plugin: EmbedMetadataPlugin): stri
 			continue;
 		}
 
-		syntaxRegex.lastIndex = 0;
-		let match: RegExpExecArray | null;
-		while ((match = syntaxRegex.exec(line.text)) !== null) {
-			const start = line.from + match.index;
-			const end = start + match[0].length;
+		for (const marker of findMetadataMarkers(line.text, plugin.settings.syntaxStyle)) {
+			const start = line.from + marker.from;
+			const end = line.from + marker.to;
 			if (pos >= start && pos <= end) {
 				markerKeys.push(`${start}:${end}`);
 				break;
