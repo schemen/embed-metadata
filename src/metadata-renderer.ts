@@ -24,9 +24,9 @@ const lastRendered = new WeakMap<HTMLElement, string>();
 // Returns a targeted refresh that updates only the spans affected by a change.
 export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedFile: TFile) => void {
 	plugin.registerMarkdownPostProcessor((el, ctx) => {
-		if (el.closest(".markdown-source-view.mod-cm6") || el.closest(".cm-editor")) {
-			return;
-		}
+		// Runs for Reading view and for Live Preview rendered blocks (callouts,
+		// embeds). Raw editable text is handled by the CodeMirror plugin and is
+		// excluded below via the `.cm-line` filter, so the two never overlap.
 		if (!ctx.sourcePath) {
 			return;
 		}
@@ -51,7 +51,7 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedF
 				}
 
 				const parent = node.parentElement;
-				if (!parent || parent.closest(`code, pre, .cm-inline-code, .cm-hmd-internal-code, .${VALUE_CLASS}, .${UNRESOLVED_CLASS}`)) {
+				if (!parent || parent.closest(`.cm-line, code, pre, .cm-inline-code, .cm-hmd-internal-code, .${VALUE_CLASS}, .${UNRESOLVED_CLASS}`)) {
 					return NodeFilter.FILTER_REJECT;
 				}
 
