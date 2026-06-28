@@ -1,6 +1,6 @@
 {
 	"name": "embed-metadata",
-	"version": "0.7.1",
+	"version": "0.8.0",
 	"description": "Render frontmatter metadata inside Obsidian notes with lightweight inline syntax.",
 	"private": true,
 	"main": "main.js",
