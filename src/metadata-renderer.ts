@@ -238,7 +238,7 @@ function reconstructSource(node: ChildNode): string {
 	if (node.nodeType === Node.TEXT_NODE) {
 		return node.nodeValue ?? "";
 	}
-	if (node instanceof HTMLElement) {
+	if (node.instanceOf(HTMLElement)) {
 		if (node.matches("a.internal-link") && node.dataset.href) {
 			// `data-href` keeps the link target including any `#subpath`.
 			return `[[${node.dataset.href}]]`;
