@@ -127,6 +127,13 @@ function getRemotePropertyTrigger(
 		return null;
 	}
 
+	// Only the canonical `@` separator gets autocomplete. The deprecated `#`
+	// form still renders, but withholding the assist nudges notes toward `@`.
+	const beforeKey = content.slice(0, content.length - reference.key.length).trimEnd();
+	if (!beforeKey.endsWith("@")) {
+		return null;
+	}
+
 	return {
 		query: reference.key,
 		target: reference.target,

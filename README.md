@@ -34,21 +34,26 @@ The Author called [%author_name] is really funny!
 ```
 
 You can also reference properties from another note by putting an Obsidian link
-target inside the marker, followed by `#property`:
+target inside the marker, followed by `@property`:
 
 ```markdown
-Current status: [%[[Project]]#status]
-Project owner: [%[[Projects/Website|Website project]]#owner]
-Review date: [%[Website project](Projects/Website.md)#review_date]
+Current status: [%[[Project]]@status]
+Project owner: [%[[Projects/Website|Website project]]@owner]
+Review date: [%[Website project](Projects/Website.md)@review_date]
 ```
 
 The same target syntax works with double braces when that syntax format is
 selected:
 
 ```markdown
-Current status: {{[[Project]]#status}}
-Review date: {{[Website project](Projects/Website.md)#review_date}}
+Current status: {{[[Project]]@status}}
+Review date: {{[Website project](Projects/Website.md)@review_date}}
 ```
+
+> **Deprecation:** earlier releases used `#property` as the separator (e.g.
+> `[[Project]]#status`). That form still renders but is **deprecated and will be
+> removed in a future release**, because Obsidian indexes the trailing `#status`
+> as a tag. Switch existing references to `@` to avoid stray tags.
 
 The syntax markers are replaced in reading view and live preview. Source mode keeps
 the syntax as plain text. If a local key, target note, or target property is

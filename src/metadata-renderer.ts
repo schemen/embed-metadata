@@ -7,6 +7,7 @@ import {
 	getSyntaxOpen,
 	metadataTargetCouldResolveTo,
 	parseMetadataReference,
+	type MetadataMarker,
 	type MetadataReference,
 	type MetadataResolution,
 	type MetadataResolver,
@@ -16,6 +17,11 @@ import {EmbedMetadataPlugin} from "./settings";
 
 const VALUE_CLASS = "embed-metadata-value";
 const UNRESOLVED_CLASS = "embed-metadata-unresolved";
+
+// Contexts we never rewrite: raw editable text (handled by the CodeMirror
+// plugin), code, and spans we have already rendered.
+const EXCLUDED_SELECTOR =
+	`.cm-line, code, pre, .cm-inline-code, .cm-hmd-internal-code, .${VALUE_CLASS}, .${UNRESOLVED_CLASS}`;
 
 // What each span last rendered, so refreshes can skip unchanged values.
 const lastRendered = new WeakMap<HTMLElement, string>();
@@ -44,6 +50,12 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedF
 		);
 		const doc = el.ownerDocument;
 		const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
+
+		// First collapse markers Obsidian fragmented across inline elements
+		// (e.g. `{{[[Note]]@key}}` becomes text + link + text). The text-node
+		// pass below only matches markers that live inside a single text node.
+		replaceFragmentedMarkers(el, resolver, doc, syntaxOpen, file.path, plugin);
+
 		const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
 			acceptNode(node) {
 				if (!node.nodeValue || !node.nodeValue.includes(syntaxOpen)) {
@@ -51,7 +63,7 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedF
 				}
 
 				const parent = node.parentElement;
-				if (!parent || parent.closest(`.cm-line, code, pre, .cm-inline-code, .cm-hmd-internal-code, .${VALUE_CLASS}, .${UNRESOLVED_CLASS}`)) {
+				if (!parent || parent.closest(EXCLUDED_SELECTOR)) {
 					return NodeFilter.FILTER_REJECT;
 				}
 
@@ -106,13 +118,7 @@ function replaceSyntaxInTextNode(
 			fragment.append(before);
 		}
 
-		const span = doc.createElement("span");
-		span.dataset.embedMetadataKey = marker.key;
-		span.dataset.embedMetadataReference = marker.raw;
-		span.dataset.embedMetadataMarker = marker.marker;
-		span.dataset.embedMetadataSourcePath = sourcePath;
-		applyResolution(span, resolver.resolve(marker), marker.marker, plugin);
-		fragment.append(span);
+		fragment.append(createMarkerSpan(marker, resolver, doc, sourcePath, plugin));
 
 		lastIndex = marker.to;
 	}
@@ -123,6 +129,151 @@ function replaceSyntaxInTextNode(
 	}
 
 	textNode.replaceWith(fragment);
+}
+
+// A child node of an inline container, with the source text it reconstructs to
+// and its offset within the container's reconstructed source string.
+type SourceSegment = {
+	node: ChildNode;
+	source: string;
+	start: number;
+	isText: boolean;
+};
+
+// Replace markers that Obsidian split across inline elements. Obsidian renders
+// links and tags before our post-processor runs, so `{{[[Note]]@key}}` arrives
+// as separate sibling nodes and never appears whole in any single text node.
+function replaceFragmentedMarkers(
+	root: HTMLElement,
+	resolver: MetadataResolver,
+	doc: Document,
+	syntaxOpen: string,
+	sourcePath: string,
+	plugin: EmbedMetadataPlugin
+): void {
+	const containers = new Set<HTMLElement>();
+	const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+		acceptNode(node) {
+			if (!node.nodeValue || !node.nodeValue.includes(syntaxOpen)) {
+				return NodeFilter.FILTER_SKIP;
+			}
+
+			const parent = node.parentElement;
+			if (!parent || parent.closest(EXCLUDED_SELECTOR)) {
+				return NodeFilter.FILTER_REJECT;
+			}
+
+			return NodeFilter.FILTER_ACCEPT;
+		},
+	});
+
+	let node = walker.nextNode();
+	while (node) {
+		const parent = (node as Text).parentElement;
+		if (parent) {
+			containers.add(parent);
+		}
+		node = walker.nextNode();
+	}
+
+	for (const container of containers) {
+		reassembleContainer(container, resolver, doc, syntaxOpen, sourcePath, plugin);
+	}
+}
+
+// Rebuild the source for one inline container and replace any marker that spans
+// more than one child node. Single-node markers are left to the text-node pass.
+function reassembleContainer(
+	container: HTMLElement,
+	resolver: MetadataResolver,
+	doc: Document,
+	syntaxOpen: string,
+	sourcePath: string,
+	plugin: EmbedMetadataPlugin
+): void {
+	const segments: SourceSegment[] = [];
+	let source = "";
+	for (const child of Array.from(container.childNodes)) {
+		const piece = reconstructSource(child);
+		segments.push({node: child, source: piece, start: source.length, isText: child.nodeType === Node.TEXT_NODE});
+		source += piece;
+	}
+
+	if (!source.includes(syntaxOpen)) {
+		return;
+	}
+
+	const markers = findMetadataMarkers(source, plugin.settings.syntaxStyle);
+
+	// Replace from the end so earlier offsets and untouched nodes stay valid.
+	for (let i = markers.length - 1; i >= 0; i -= 1) {
+		const marker = markers[i];
+		if (!marker) {
+			continue;
+		}
+		const startSeg = findSegmentAt(segments, marker.from);
+		const endSeg = findSegmentAt(segments, marker.to - 1);
+		if (!startSeg || !endSeg || startSeg === endSeg) {
+			continue;
+		}
+
+		// Marker delimiters (`{{`/`}}`) always sit in text; a non-text boundary
+		// means an unexpected layout we leave untouched rather than mangle.
+		if (!startSeg.isText || !endSeg.isText) {
+			continue;
+		}
+
+		const span = createMarkerSpan(marker, resolver, doc, sourcePath, plugin);
+		const range = doc.createRange();
+		range.setStart(startSeg.node, marker.from - startSeg.start);
+		range.setEnd(endSeg.node, marker.to - endSeg.start);
+		range.deleteContents();
+		range.insertNode(span);
+	}
+}
+
+// Reconstruct the markdown source a rendered node came from, so a fragmented
+// marker can be parsed back into its original reference.
+function reconstructSource(node: ChildNode): string {
+	if (node.nodeType === Node.TEXT_NODE) {
+		return node.nodeValue ?? "";
+	}
+	if (node instanceof HTMLElement) {
+		if (node.matches("a.internal-link") && node.dataset.href) {
+			// `data-href` keeps the link target including any `#subpath`.
+			return `[[${node.dataset.href}]]`;
+		}
+		// Tags (legacy `#key` form) and other inline markup map back to their text.
+		return node.textContent ?? "";
+	}
+	return node.textContent ?? "";
+}
+
+function findSegmentAt(segments: SourceSegment[], offset: number): SourceSegment | null {
+	for (const segment of segments) {
+		if (offset >= segment.start && offset < segment.start + segment.source.length) {
+			return segment;
+		}
+	}
+	return null;
+}
+
+// Build a placeholder span for a marker, tagged so targeted refreshes can find
+// and re-resolve it in place when a dependency changes.
+function createMarkerSpan(
+	marker: MetadataMarker,
+	resolver: MetadataResolver,
+	doc: Document,
+	sourcePath: string,
+	plugin: EmbedMetadataPlugin
+): HTMLElement {
+	const span = doc.createElement("span");
+	span.dataset.embedMetadataKey = marker.key;
+	span.dataset.embedMetadataReference = marker.raw;
+	span.dataset.embedMetadataMarker = marker.marker;
+	span.dataset.embedMetadataSourcePath = sourcePath;
+	applyResolution(span, resolver.resolve(marker), marker.marker, plugin);
+	return span;
 }
 
 // Render a resolution into a span, skipping the DOM write when nothing changed.

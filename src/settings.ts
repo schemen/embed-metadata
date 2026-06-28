@@ -94,6 +94,15 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("Remote property syntax")
+			.setDesc(
+				"Reference another note's property with [[Note]]@key; autocomplete is offered after @."
+				+ " The older [[Note]]#key form still renders but is deprecated and will be removed in a"
+				+ " future release, because Obsidian indexes the #key as a tag. Switch existing references"
+				+ " to @ to avoid stray tags."
+			);
+
+		new Setting(containerEl)
 			.setName("Render in outline (experimental)")
 			.setDesc("Render metadata markers in the outline view.")
 			.addToggle((toggle) => {
