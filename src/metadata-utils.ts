@@ -387,9 +387,12 @@ function parseRemoteReference(raw: string, allowEmptyKey: boolean): MetadataRefe
 	};
 }
 
+// `@` is the canonical key separator; `#` is deprecated and still parsed for
+// back-compat, but will be removed in a future release. `@` avoids the key being
+// indexed as an Obsidian tag the way a loose `#key` is.
 function parseRemoteKey(raw: string, allowEmptyKey: boolean): string | null {
 	const trimmed = raw.trim();
-	if (!trimmed.startsWith("#")) {
+	if (!trimmed.startsWith("@") && !trimmed.startsWith("#")) {
 		return null;
 	}
 
