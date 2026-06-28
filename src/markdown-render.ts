@@ -1,7 +1,7 @@
 // Inline markdown renderer for metadata values (links, embeds, etc.)
 import {App, Component, MarkdownRenderer} from "obsidian";
 
-const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|\n)/;
+const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|https?:\/\/|\n)/;
 
 // Render a value as inline markdown 
 export function renderInlineMarkdown(
