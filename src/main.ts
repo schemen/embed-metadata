@@ -7,7 +7,7 @@ import {MarkdownRefresher, registerMarkdownRefresh} from "./metadata-utils";
 import {DEFAULT_SETTINGS, EmbedMetadataSettingTab, EmbedMetadataSettings} from "./settings";
 
 export default class EmbedMetadata extends Plugin {
-	settings: EmbedMetadataSettings;
+	settings!: EmbedMetadataSettings;
 	private refreshOutlineViews: (() => void) | null = null;
 	private markdownRefresher: MarkdownRefresher | null = null;
 

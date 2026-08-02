@@ -18,7 +18,7 @@ export class MigrationModal extends Modal {
 	private plugin: EmbedMetadataPlugin;
 	private mode: MigrationMode;
 	private entries: MigrationEntry[] = [];
-	private listEl: HTMLElement;
+	private listEl!: HTMLElement;
 	private migrateButton: HTMLButtonElement | null = null;
 
 	constructor(app: App, plugin: EmbedMetadataPlugin, mode: MigrationMode) {
