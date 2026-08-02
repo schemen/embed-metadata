@@ -18,7 +18,7 @@ import {
 	type MetadataResolution,
 	type MetadataResolver,
 } from "./metadata-utils";
-import {clearRenderedMarkdown, renderInlineMarkdown} from "./markdown-render";
+import {clearRenderedMarkdown, createDetachedSpan, renderInlineMarkdown} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
 const VALUE_CLASS = "embed-metadata-value";
@@ -280,7 +280,7 @@ function createMarkerSpan(
 	plugin: EmbedMetadataPlugin,
 	ctx: MarkdownPostProcessorContext
 ): HTMLElement {
-	const span = doc.createSpan();
+	const span = createDetachedSpan(doc);
 	span.dataset.embedMetadataKey = marker.key;
 	span.dataset.embedMetadataReference = marker.raw;
 	span.dataset.embedMetadataMarker = marker.marker;

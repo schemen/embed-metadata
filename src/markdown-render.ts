@@ -8,7 +8,17 @@ type ActiveRender = {
 	component: Component;
 };
 
+type ObsidianDomWindow = Window & {
+	createSpan: () => HTMLSpanElement;
+};
+
 const activeRenders = new WeakMap<HTMLElement, ActiveRender>();
+
+// Obsidian exposes detached DOM factories on each enhanced Window. Calling
+// createSpan() on a Document instead would try to append a second document root.
+export function createDetachedSpan(doc: Document): HTMLSpanElement {
+	return (doc.win as ObsidianDomWindow).createSpan();
+}
 
 function clearActiveRender(el: HTMLElement): void {
 	const active = activeRenders.get(el);

@@ -12,7 +12,7 @@ import {
 	type MetadataMarker,
 	type SyntaxStyle,
 } from "./metadata-utils";
-import {renderInlineMarkdown} from "./markdown-render";
+import {createDetachedSpan, renderInlineMarkdown} from "./markdown-render";
 import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
 
@@ -670,11 +670,11 @@ class MetadataWidget extends WidgetType {
 	}
 
 	// Render the replacement widget node for a single syntax marker.
-	toDOM(): HTMLElement {
+	toDOM(view: EditorView): HTMLElement {
 		this.renderParent?.unload();
 		this.renderParent = new Component();
 		this.renderParent.load();
-		const span = window.activeDocument.createSpan();
+		const span = createDetachedSpan(view.dom.ownerDocument);
 		applyValueStyles(span, this.plugin.settings);
 		let container = span;
 		if (this.markdownStyle.highlight) {
