@@ -74,6 +74,41 @@ export type EmbedMetadataPlugin = Plugin & {
 	saveSettings: () => Promise<void>;
 };
 
+type RenderedSettingDefinition = {
+	name: string;
+	desc?: string;
+	render: (setting: Setting) => void;
+	control?: never;
+	action?: never;
+};
+
+type InformationalSettingDefinition = {
+	name: string;
+	desc?: string;
+	render?: never;
+	control?: never;
+	action?: never;
+};
+
+type CompatibleSettingDefinition = RenderedSettingDefinition | InformationalSettingDefinition;
+
+type CompatibleSettingGroup = {
+	type: "group";
+	heading: string;
+	items: CompatibleSettingDefinition[];
+};
+
+type BooleanSettingKey =
+	| "caseInsensitiveKeys"
+	| "builtInKeysEnabled"
+	| "renderOutline"
+	| "bold"
+	| "italic"
+	| "underline"
+	| "highlight"
+	| "highlightColorEnabled"
+	| "hoverEmphasis";
+
 // Settings UI for the plugin.
 export class EmbedMetadataSettingTab extends PluginSettingTab {
 	private plugin: EmbedMetadataPlugin;
@@ -83,178 +118,161 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	// Render the settings form.
+	// Obsidian 1.13+ uses these definitions for rendering and settings search.
+	getSettingDefinitions(): CompatibleSettingGroup[] {
+		return [
+			{
+				type: "group",
+				heading: "Syntax",
+				items: [
+					{
+						name: "Syntax format",
+						desc: "Choose the syntax used to embed frontmatter values.",
+						render: (setting) => {
+							setting.addDropdown((dropdown) => {
+								dropdown
+									.addOption("brackets", "[%key]")
+									.addOption("doubleBraces", "{{key}}")
+									.setValue(this.plugin.settings.syntaxStyle)
+									.onChange(async (value) => {
+										this.plugin.settings.syntaxStyle = value as SyntaxStyle;
+										await this.plugin.saveSettings();
+									});
+							});
+						},
+					},
+					this.createToggleDefinition(
+						"caseInsensitiveKeys",
+						"Case-insensitive keys",
+						"Treat keys as case-insensitive (Age matches {{age}})."
+					),
+					this.createToggleDefinition(
+						"builtInKeysEnabled",
+						"Built-in keys",
+						"Enable built-ins like {{filename}}, {{path}}, and {{mtime}}."
+					),
+					{
+						name: "Remote property syntax",
+						desc: "Reference another note's property with [[Note]]@key; autocomplete is offered after @."
+							+ " The older [[Note]]#key form still renders but is deprecated and will be removed in a"
+							+ " future release, because Obsidian indexes the #key as a tag. Switch existing references"
+							+ " to @ to avoid stray tags.",
+					},
+					this.createToggleDefinition(
+						"renderOutline",
+						"Render in outline (experimental)",
+						"Render metadata markers in the outline view."
+					),
+				],
+			},
+			{
+				type: "group",
+				heading: "Visual aid in live preview",
+				items: [
+					this.createToggleDefinition("bold", "Bold", "Render values in bold."),
+					this.createToggleDefinition("italic", "Italic", "Render values in italics."),
+					this.createToggleDefinition("underline", "Underline", "Underline rendered values."),
+					this.createToggleDefinition("highlight", "Highlight", "Highlight rendered values."),
+					{
+						name: "Highlight color",
+						desc: "Override highlight color (otherwise uses theme highlight).",
+						render: (setting) => {
+							setting
+								.addToggle((toggle) => {
+									toggle
+										.setValue(this.plugin.settings.highlightColorEnabled)
+										.onChange(async (value) => {
+											this.plugin.settings.highlightColorEnabled = value;
+											await this.plugin.saveSettings();
+										});
+								})
+								.addColorPicker((picker) => {
+									picker
+										.setValue(this.plugin.settings.highlightColor)
+										.onChange(async (value) => {
+											this.plugin.settings.highlightColor = value;
+											await this.plugin.saveSettings();
+										});
+								});
+						},
+					},
+					this.createToggleDefinition(
+						"hoverEmphasis",
+						"Hover emphasis",
+						"Shift styling slightly on hover in live preview."
+					),
+				],
+			},
+			{
+				type: "group",
+				heading: "Migration",
+				items: [
+					{
+						name: "Migrate from dataview",
+						desc: "Convert backticked `=this.key` syntax to the selected format.",
+						render: (setting) => {
+							setting.addButton((button) => {
+								button.setButtonText("Review").onClick(() => {
+									new MigrationModal(this.app, this.plugin, "dataview").open();
+								});
+							});
+						},
+					},
+					{
+						name: "Migrate to current syntax",
+						desc: "Convert other supported syntax formats to the selected format.",
+						render: (setting) => {
+							setting.addButton((button) => {
+								button.setButtonText("Review").onClick(() => {
+									new MigrationModal(this.app, this.plugin, "otherSyntax").open();
+								});
+							});
+						},
+					},
+				],
+			},
+		];
+	}
+
+	// Obsidian versions before 1.13 use the imperative settings API.
 	display(): void {
-		const {containerEl} = this;
-		containerEl.empty();
+		this.containerEl.empty();
 
-		new Setting(containerEl)
-			.setName("Syntax")
-			.setHeading();
+		for (const group of this.getSettingDefinitions()) {
+			new Setting(this.containerEl)
+				.setName(group.heading)
+				.setHeading();
 
-		new Setting(containerEl)
-			.setName("Syntax format")
-			.setDesc("Choose the syntax used to embed frontmatter values.")
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOption("brackets", "[%key]")
-					.addOption("doubleBraces", "{{key}}")
-					.setValue(this.plugin.settings.syntaxStyle)
-					.onChange(async (value) => {
-						this.plugin.settings.syntaxStyle = value as SyntaxStyle;
-						await this.plugin.saveSettings();
-					});
-			});
+			for (const definition of group.items) {
+				const setting = new Setting(this.containerEl).setName(definition.name);
+				if (definition.desc) {
+					setting.setDesc(definition.desc);
+				}
+				if (definition.render) {
+					definition.render(setting);
+				}
+			}
+		}
+	}
 
-		new Setting(containerEl)
-			.setName("Case-insensitive keys")
-			.setDesc("Treat keys as case-insensitive (Age matches {{age}}).")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.caseInsensitiveKeys)
-					.onChange(async (value) => {
-						this.plugin.settings.caseInsensitiveKeys = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Built-in keys")
-			.setDesc("Enable built-ins like {{filename}}, {{path}}, and {{mtime}}.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.builtInKeysEnabled)
-					.onChange(async (value) => {
-						this.plugin.settings.builtInKeysEnabled = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Remote property syntax")
-			.setDesc(
-				"Reference another note's property with [[Note]]@key; autocomplete is offered after @."
-				+ " The older [[Note]]#key form still renders but is deprecated and will be removed in a"
-				+ " future release, because Obsidian indexes the #key as a tag. Switch existing references"
-				+ " to @ to avoid stray tags."
-			);
-
-		new Setting(containerEl)
-			.setName("Render in outline (experimental)")
-			.setDesc("Render metadata markers in the outline view.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.renderOutline)
-					.onChange(async (value) => {
-						this.plugin.settings.renderOutline = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Visual aid in live preview")
-			.setHeading();
-
-		new Setting(containerEl)
-			.setName("Bold")
-			.setDesc("Render values in bold.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.bold)
-					.onChange(async (value) => {
-						this.plugin.settings.bold = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Italic")
-			.setDesc("Render values in italics.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.italic)
-					.onChange(async (value) => {
-						this.plugin.settings.italic = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Underline")
-			.setDesc("Underline rendered values.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.underline)
-					.onChange(async (value) => {
-						this.plugin.settings.underline = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Highlight")
-			.setDesc("Highlight rendered values.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.highlight)
-					.onChange(async (value) => {
-						this.plugin.settings.highlight = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Highlight color")
-			.setDesc("Override highlight color (otherwise uses theme highlight).")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.highlightColorEnabled)
-					.onChange(async (value) => {
-						this.plugin.settings.highlightColorEnabled = value;
-						await this.plugin.saveSettings();
-					});
-			})
-			.addColorPicker((picker) => {
-				picker
-					.setValue(this.plugin.settings.highlightColor)
-					.onChange(async (value) => {
-						this.plugin.settings.highlightColor = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Hover emphasis")
-			.setDesc("Shift styling slightly on hover in live preview.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.hoverEmphasis)
-					.onChange(async (value) => {
-						this.plugin.settings.hoverEmphasis = value;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Migration")
-			.setHeading();
-
-		new Setting(containerEl)
-			.setName("Migrate from dataview")
-			.setDesc("Convert backticked `=this.key` syntax to the selected format.")
-			.addButton((button) => {
-				button.setButtonText("Review").onClick(() => {
-					new MigrationModal(this.app, this.plugin, "dataview").open();
+	private createToggleDefinition(
+		key: BooleanSettingKey,
+		name: string,
+		desc: string
+	): RenderedSettingDefinition {
+		return {
+			name,
+			desc,
+			render: (setting) => {
+				setting.addToggle((toggle) => {
+					toggle
+						.setValue(this.plugin.settings[key])
+						.onChange(async (value) => {
+							this.plugin.settings[key] = value;
+							await this.plugin.saveSettings();
+						});
 				});
-			});
-
-		new Setting(containerEl)
-			.setName("Migrate to current syntax")
-			.setDesc("Convert other supported syntax formats to the selected format.")
-			.addButton((button) => {
-				button.setButtonText("Review").onClick(() => {
-					new MigrationModal(this.app, this.plugin, "otherSyntax").open();
-				});
-			});
+			},
+		};
 	}
 }
