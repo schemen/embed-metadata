@@ -3,7 +3,43 @@ import {App, Component, MarkdownRenderer} from "obsidian";
 
 const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|https?:\/\/|\n)/;
 
-// Render a value as inline markdown 
+type ActiveRender = {
+	parent: Component;
+	component: Component;
+};
+
+const activeRenders = new WeakMap<HTMLElement, ActiveRender>();
+
+function clearActiveRender(el: HTMLElement): void {
+	const active = activeRenders.get(el);
+	if (!active) {
+		return;
+	}
+	active.parent.removeChild(active.component);
+	activeRenders.delete(el);
+}
+
+export function clearRenderedMarkdown(el: HTMLElement): void {
+	clearActiveRender(el);
+}
+
+function createRenderComponent(el: HTMLElement, parent: Component): Component {
+	clearActiveRender(el);
+	const component = parent.addChild(new Component());
+	activeRenders.set(el, {parent, component});
+	component.register(() => {
+		if (activeRenders.get(el)?.component === component) {
+			activeRenders.delete(el);
+		}
+	});
+	return component;
+}
+
+function renderIsActive(el: HTMLElement, component: Component): boolean {
+	return activeRenders.get(el)?.component === component;
+}
+
+// Render a value as inline markdown.
 export function renderInlineMarkdown(
 	app: App,
 	sourcePath: string,
@@ -12,16 +48,17 @@ export function renderInlineMarkdown(
 	component: Component
 ): void {
 	if (!value || !markdownHintRegex.test(value)) {
+		clearActiveRender(el);
 		el.textContent = value;
 		return;
 	}
 
 	el.textContent = "";
-
 	const temp = el.createSpan();
+	const renderComponent = createRenderComponent(el, component);
 
-	void MarkdownRenderer.render(app, value, temp, sourcePath, component).then(() => {
-		if (!temp.parentElement) {
+	void MarkdownRenderer.render(app, value, temp, sourcePath, renderComponent).then(() => {
+		if (!renderIsActive(el, renderComponent) || !temp.parentElement) {
 			return;
 		}
 
@@ -37,6 +74,12 @@ export function renderInlineMarkdown(
 		}
 
 		temp.remove();
+	}).catch(() => {
+		if (!renderIsActive(el, renderComponent) || !temp.parentElement) {
+			return;
+		}
+		clearActiveRender(el);
+		el.textContent = value;
 	});
 }
 
@@ -50,6 +93,7 @@ export function renderInlineMarkdownText(
 	onRendered?: (text: string) => void
 ): void {
 	if (!value || !markdownHintRegex.test(value)) {
+		clearActiveRender(el);
 		el.textContent = value;
 		onRendered?.(value);
 		return;
@@ -57,15 +101,23 @@ export function renderInlineMarkdownText(
 
 	el.textContent = "";
 	const temp = el.createSpan();
+	const renderComponent = createRenderComponent(el, component);
 
-	void MarkdownRenderer.render(app, value, temp, sourcePath, component).then(() => {
-		if (!temp.parentElement) {
+	void MarkdownRenderer.render(app, value, temp, sourcePath, renderComponent).then(() => {
+		if (!renderIsActive(el, renderComponent) || !temp.parentElement) {
 			return;
 		}
 
 		const text = temp.textContent ?? "";
+		clearActiveRender(el);
 		el.textContent = text;
-		temp.remove();
 		onRendered?.(text);
+	}).catch(() => {
+		if (!renderIsActive(el, renderComponent) || !temp.parentElement) {
+			return;
+		}
+		clearActiveRender(el);
+		el.textContent = value;
+		onRendered?.(value);
 	});
 }

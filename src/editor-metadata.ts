@@ -1,7 +1,7 @@
 // Live Preview renderer using CodeMirror decorations
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType} from "@codemirror/view";
 import {RangeSetBuilder, StateEffect, Text} from "@codemirror/state";
-import {editorInfoField, editorLivePreviewField, TFile} from "obsidian";
+import {Component, editorInfoField, editorLivePreviewField, TFile} from "obsidian";
 import {
 	createMetadataDependencies,
 	createMetadataResolver,
@@ -38,9 +38,9 @@ const livePreviewRefreshEffect = StateEffect.define<null>();
 const livePreviewInstances = new Set<MetadataViewPlugin>();
 
 // Refresh only the Live Preview views whose rendered values depend on `file`.
-export function refreshLivePreviewForDependents(file: TFile): void {
+export function refreshLivePreviewForDependents(file: TFile, previousPath?: string): void {
 	for (const instance of livePreviewInstances) {
-		if (instance.dependsOn(file)) {
+		if (instance.dependsOn(file, previousPath)) {
 			instance.requestRefresh();
 		}
 	}
@@ -129,8 +129,8 @@ class MetadataViewPlugin {
 
 	// Dependencies cover the last built ranges; markers scrolled into view are
 	// re-resolved by the viewport rebuild, so visible coverage is sufficient.
-	dependsOn(file: TFile): boolean {
-		return metadataDependenciesInclude(this.dependencies, file);
+	dependsOn(file: TFile, previousPath?: string): boolean {
+		return metadataDependenciesInclude(this.dependencies, file, previousPath);
 	}
 
 	requestRefresh(): void {
@@ -301,27 +301,38 @@ function updateFenceStateForLine(
 	state: FenceState
 ): {lineInFence: boolean; isFenceLine: boolean} {
 	const wasInFence = state.inFence;
-	const match = lineText.match(/^\s*([`~]{3,})/);
-	let isFenceLine = false;
-
-	if (match) {
-		isFenceLine = true;
-		const marker = match[1] ?? "";
-		const fenceChar = marker[0] ?? "";
-		const fenceLen = marker.length;
-
-		if (!state.inFence) {
-			state.inFence = true;
-			state.fenceChar = fenceChar;
-			state.fenceLen = fenceLen;
-		} else if (fenceChar && fenceChar === state.fenceChar && fenceLen >= state.fenceLen) {
-			state.inFence = false;
-			state.fenceChar = "";
-			state.fenceLen = 0;
-		}
+	const match = lineText.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+	if (!match) {
+		return {lineInFence: wasInFence, isFenceLine: false};
 	}
 
-	return {lineInFence: wasInFence, isFenceLine};
+	const marker = match[1] ?? "";
+	const trailing = match[2] ?? "";
+	const fenceChar = marker[0] ?? "";
+	const fenceLen = marker.length;
+
+	if (!state.inFence) {
+		// Backtick info strings cannot themselves contain backticks.
+		if (fenceChar === "`" && trailing.includes("`")) {
+			return {lineInFence: false, isFenceLine: false};
+		}
+		state.inFence = true;
+		state.fenceChar = fenceChar;
+		state.fenceLen = fenceLen;
+		return {lineInFence: false, isFenceLine: true};
+	}
+
+	const closesFence = fenceChar === state.fenceChar
+		&& fenceLen >= state.fenceLen
+		&& trailing.trim().length === 0;
+	if (!closesFence) {
+		return {lineInFence: true, isFenceLine: false};
+	}
+
+	state.inFence = false;
+	state.fenceChar = "";
+	state.fenceLen = 0;
+	return {lineInFence: true, isFenceLine: true};
 }
 
 type InlineCodeRange = {from: number; to: number};
@@ -523,12 +534,12 @@ function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin
 			return;
 		}
 
-		if (changeTouchesMarker(prevDoc, fromA, toA, plugin.settings.syntaxStyle, syntaxOpen)) {
+		if (changeAffectsRenderedContext(prevDoc, fromA, toA, syntaxOpen)) {
 			needsRebuild = true;
 			return;
 		}
 
-		if (changeTouchesMarker(nextDoc, fromB, toB, plugin.settings.syntaxStyle, syntaxOpen)) {
+		if (changeAffectsRenderedContext(nextDoc, fromB, toB, syntaxOpen)) {
 			needsRebuild = true;
 		}
 	});
@@ -536,29 +547,23 @@ function shouldRebuildForChanges(update: ViewUpdate, plugin: EmbedMetadataPlugin
 	return needsRebuild;
 }
 
-function changeTouchesMarker(
+function changeAffectsRenderedContext(
 	doc: Text,
 	from: number,
 	to: number,
-	syntaxStyle: SyntaxStyle,
 	syntaxOpen: string
 ): boolean {
 	const safeTo = Math.max(to - 1, from);
-	const startLine = doc.lineAt(from).number;
-	const endLine = doc.lineAt(safeTo).number;
+	// A newline edit can turn either neighboring line into (or out of) a fence.
+	// Inspect one line beyond the changed range so those boundary transitions
+	// invalidate the decoration cache as well.
+	const startLine = Math.max(1, doc.lineAt(from).number - 1);
+	const endLine = Math.min(doc.lines, doc.lineAt(safeTo).number + 1);
 
 	for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
 		const line = doc.line(lineNumber);
-		if (!line.text.includes(syntaxOpen)) {
-			continue;
-		}
-
-		for (const marker of findMetadataMarkers(line.text, syntaxStyle)) {
-			const start = line.from + marker.from;
-			const end = line.from + marker.to;
-			if (rangesOverlap(from, to, start, end)) {
-				return true;
-			}
+		if (line.text.includes(syntaxOpen) || /^ {0,3}(?:`{3,}|~{3,})/.test(line.text)) {
+			return true;
 		}
 	}
 
@@ -632,6 +637,7 @@ class MetadataWidget extends WidgetType {
 	private readonly styleKey: string;
 	private readonly markdownStyle: MarkdownStyle;
 	private readonly isEmpty: boolean;
+	private renderParent: Component | null = null;
 
 	constructor(
 		value: string,
@@ -665,7 +671,10 @@ class MetadataWidget extends WidgetType {
 
 	// Render the replacement widget node for a single syntax marker.
 	toDOM(): HTMLElement {
-		const span = window.activeDocument.createElement("span");
+		this.renderParent?.unload();
+		this.renderParent = new Component();
+		this.renderParent.load();
+		const span = window.activeDocument.createSpan();
 		applyValueStyles(span, this.plugin.settings);
 		let container = span;
 		if (this.markdownStyle.highlight) {
@@ -684,10 +693,15 @@ class MetadataWidget extends WidgetType {
 			const em = container.createEl("em", {cls: "cm-em"});
 			container = em;
 		}
-		renderInlineMarkdown(this.plugin.app, this.sourcePath, container, this.value, this.plugin);
+		renderInlineMarkdown(this.plugin.app, this.sourcePath, container, this.value, this.renderParent);
 		if (this.isEmpty) {
 			span.classList.add("embed-metadata-empty");
 		}
 		return span;
+	}
+
+	destroy(): void {
+		this.renderParent?.unload();
+		this.renderParent = null;
 	}
 }

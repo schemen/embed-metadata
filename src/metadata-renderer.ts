@@ -1,5 +1,11 @@
 // Reading view renderer that replaces syntax markers in the preview DOM.
-import {MarkdownView, TFile} from "obsidian";
+import {
+	Component,
+	MarkdownRenderChild,
+	MarkdownView,
+	TFile,
+	type MarkdownPostProcessorContext,
+} from "obsidian";
 import {
 	createMetadataResolver,
 	findMetadataMarkers,
@@ -12,7 +18,7 @@ import {
 	type MetadataResolution,
 	type MetadataResolver,
 } from "./metadata-utils";
-import {renderInlineMarkdown} from "./markdown-render";
+import {clearRenderedMarkdown, renderInlineMarkdown} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
 const VALUE_CLASS = "embed-metadata-value";
@@ -25,10 +31,13 @@ const EXCLUDED_SELECTOR =
 
 // What each span last rendered, so refreshes can skip unchanged values.
 const lastRendered = new WeakMap<HTMLElement, string>();
+const renderParents = new WeakMap<HTMLElement, Component>();
 
 // Render syntax markers in Reading view by post-processing the preview DOM.
 // Returns a targeted refresh that updates only the spans affected by a change.
-export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedFile: TFile) => void {
+export function registerMetadataRenderer(
+	plugin: EmbedMetadataPlugin
+): (changedFile: TFile, previousPath?: string) => void {
 	plugin.registerMarkdownPostProcessor((el, ctx) => {
 		// Runs for Reading view and for Live Preview rendered blocks (callouts,
 		// embeds). Raw editable text is handled by the CodeMirror plugin and is
@@ -54,7 +63,7 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedF
 		// First collapse markers Obsidian fragmented across inline elements
 		// (e.g. `{{[[Note]]@key}}` becomes text + link + text). The text-node
 		// pass below only matches markers that live inside a single text node.
-		replaceFragmentedMarkers(el, resolver, doc, syntaxOpen, file.path, plugin);
+		replaceFragmentedMarkers(el, resolver, doc, syntaxOpen, file.path, plugin, ctx);
 
 		const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
 			acceptNode(node) {
@@ -79,12 +88,12 @@ export function registerMetadataRenderer(plugin: EmbedMetadataPlugin): (changedF
 		}
 
 		for (const textNode of textNodes) {
-			replaceSyntaxInTextNode(textNode, resolver, doc, syntaxOpen, file.path, plugin);
+			replaceSyntaxInTextNode(textNode, resolver, doc, syntaxOpen, file.path, plugin, ctx);
 		}
 	});
 
-	return (changedFile: TFile) => {
-		refreshRenderedValues(plugin, changedFile);
+	return (changedFile: TFile, previousPath?: string) => {
+		refreshRenderedValues(plugin, changedFile, previousPath);
 	};
 }
 
@@ -97,7 +106,8 @@ function replaceSyntaxInTextNode(
 	doc: Document,
 	syntaxOpen: string,
 	sourcePath: string,
-	plugin: EmbedMetadataPlugin
+	plugin: EmbedMetadataPlugin,
+	ctx: MarkdownPostProcessorContext
 ): void {
 	const text = textNode.nodeValue ?? "";
 	if (!text.includes(syntaxOpen)) {
@@ -110,25 +120,25 @@ function replaceSyntaxInTextNode(
 	}
 
 	let lastIndex = 0;
-	const fragment = doc.createDocumentFragment();
+	const replacements: (Node | string)[] = [];
 
 	for (const marker of markers) {
 		const before = text.slice(lastIndex, marker.from);
 		if (before) {
-			fragment.append(before);
+			replacements.push(before);
 		}
 
-		fragment.append(createMarkerSpan(marker, resolver, doc, sourcePath, plugin));
+		replacements.push(createMarkerSpan(marker, resolver, doc, sourcePath, plugin, ctx));
 
 		lastIndex = marker.to;
 	}
 
 	const after = text.slice(lastIndex);
 	if (after) {
-		fragment.append(after);
+		replacements.push(after);
 	}
 
-	textNode.replaceWith(fragment);
+	textNode.replaceWith(...replacements);
 }
 
 // A child node of an inline container, with the source text it reconstructs to
@@ -149,7 +159,8 @@ function replaceFragmentedMarkers(
 	doc: Document,
 	syntaxOpen: string,
 	sourcePath: string,
-	plugin: EmbedMetadataPlugin
+	plugin: EmbedMetadataPlugin,
+	ctx: MarkdownPostProcessorContext
 ): void {
 	const containers = new Set<HTMLElement>();
 	const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -177,7 +188,7 @@ function replaceFragmentedMarkers(
 	}
 
 	for (const container of containers) {
-		reassembleContainer(container, resolver, doc, syntaxOpen, sourcePath, plugin);
+		reassembleContainer(container, resolver, doc, syntaxOpen, sourcePath, plugin, ctx);
 	}
 }
 
@@ -189,7 +200,8 @@ function reassembleContainer(
 	doc: Document,
 	syntaxOpen: string,
 	sourcePath: string,
-	plugin: EmbedMetadataPlugin
+	plugin: EmbedMetadataPlugin,
+	ctx: MarkdownPostProcessorContext
 ): void {
 	const segments: SourceSegment[] = [];
 	let source = "";
@@ -223,7 +235,7 @@ function reassembleContainer(
 			continue;
 		}
 
-		const span = createMarkerSpan(marker, resolver, doc, sourcePath, plugin);
+		const span = createMarkerSpan(marker, resolver, doc, sourcePath, plugin, ctx);
 		const range = doc.createRange();
 		range.setStart(startSeg.node, marker.from - startSeg.start);
 		range.setEnd(endSeg.node, marker.to - endSeg.start);
@@ -265,13 +277,22 @@ function createMarkerSpan(
 	resolver: MetadataResolver,
 	doc: Document,
 	sourcePath: string,
-	plugin: EmbedMetadataPlugin
+	plugin: EmbedMetadataPlugin,
+	ctx: MarkdownPostProcessorContext
 ): HTMLElement {
-	const span = doc.createElement("span");
+	const span = doc.createSpan();
 	span.dataset.embedMetadataKey = marker.key;
 	span.dataset.embedMetadataReference = marker.raw;
 	span.dataset.embedMetadataMarker = marker.marker;
 	span.dataset.embedMetadataSourcePath = sourcePath;
+	const renderParent = new MarkdownRenderChild(span);
+	renderParents.set(span, renderParent);
+	renderParent.register(() => {
+		if (renderParents.get(span) === renderParent) {
+			renderParents.delete(span);
+		}
+	});
+	ctx.addChild(renderParent);
 	applyResolution(span, resolver.resolve(marker), marker.marker, plugin);
 	return span;
 }
@@ -292,6 +313,7 @@ function applyResolution(
 		}
 		if (lastRendered.get(span) !== markerText) {
 			lastRendered.set(span, markerText);
+			clearRenderedMarkdown(span);
 			span.textContent = markerText;
 		}
 		return;
@@ -305,11 +327,12 @@ function applyResolution(
 		return;
 	}
 	lastRendered.set(span, renderKey);
-	renderInlineMarkdown(plugin.app, resolution.targetFile.path, span, resolution.value, plugin);
+	const renderParent = renderParents.get(span) ?? plugin;
+	renderInlineMarkdown(plugin.app, resolution.targetFile.path, span, resolution.value, renderParent);
 }
 
 // Re-resolve only the spans whose value can be affected by the changed file.
-function refreshRenderedValues(plugin: EmbedMetadataPlugin, changedFile: TFile): void {
+function refreshRenderedValues(plugin: EmbedMetadataPlugin, changedFile: TFile, previousPath?: string): void {
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const syntaxClose = getSyntaxClose(plugin.settings.syntaxStyle);
 	const leaves = plugin.app.workspace.getLeavesOfType("markdown");
@@ -333,7 +356,7 @@ function refreshRenderedValues(plugin: EmbedMetadataPlugin, changedFile: TFile):
 				continue;
 			}
 			const reference = parseMetadataReference(raw);
-			if (!reference || !spanAffectedBy(span, reference, changedFile)) {
+			if (!reference || !spanAffectedBy(span, reference, changedFile, previousPath)) {
 				continue;
 			}
 
@@ -358,10 +381,15 @@ function refreshRenderedValues(plugin: EmbedMetadataPlugin, changedFile: TFile):
 
 // A span is affected when the change hits its resolved target, or when the
 // changed file could satisfy a target that previously failed to resolve.
-function spanAffectedBy(span: HTMLElement, reference: MetadataReference, file: TFile): boolean {
+function spanAffectedBy(
+	span: HTMLElement,
+	reference: MetadataReference,
+	file: TFile,
+	previousPath?: string
+): boolean {
 	const targetPath = span.dataset.embedMetadataTargetPath;
 	if (targetPath !== undefined) {
-		return targetPath === file.path;
+		return targetPath === file.path || targetPath === previousPath;
 	}
 	return reference.target !== null && metadataTargetCouldResolveTo(reference.target, file);
 }

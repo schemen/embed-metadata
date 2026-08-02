@@ -31,6 +31,43 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	hoverEmphasis: true,
 };
 
+// Validate persisted data so malformed or stale values cannot leak into the UI.
+export function normalizeSettings(data: unknown): EmbedMetadataSettings {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return {...DEFAULT_SETTINGS};
+	}
+
+	const saved = data as Record<string, unknown>;
+	const booleanSetting = (key: string, fallback: boolean): boolean => {
+		const value = saved[key];
+		return typeof value === "boolean" ? value : fallback;
+	};
+	const syntaxStyle = saved.syntaxStyle === "brackets" || saved.syntaxStyle === "doubleBraces"
+		? saved.syntaxStyle
+		: DEFAULT_SETTINGS.syntaxStyle;
+	const highlightColor = typeof saved.highlightColor === "string"
+		&& /^#[0-9a-f]{6}$/i.test(saved.highlightColor)
+		? saved.highlightColor
+		: DEFAULT_SETTINGS.highlightColor;
+
+	return {
+		syntaxStyle,
+		caseInsensitiveKeys: booleanSetting("caseInsensitiveKeys", DEFAULT_SETTINGS.caseInsensitiveKeys),
+		builtInKeysEnabled: booleanSetting("builtInKeysEnabled", DEFAULT_SETTINGS.builtInKeysEnabled),
+		renderOutline: booleanSetting("renderOutline", DEFAULT_SETTINGS.renderOutline),
+		bold: booleanSetting("bold", DEFAULT_SETTINGS.bold),
+		italic: booleanSetting("italic", DEFAULT_SETTINGS.italic),
+		underline: booleanSetting("underline", DEFAULT_SETTINGS.underline),
+		highlight: booleanSetting("highlight", DEFAULT_SETTINGS.highlight),
+		highlightColorEnabled: booleanSetting(
+			"highlightColorEnabled",
+			DEFAULT_SETTINGS.highlightColorEnabled
+		),
+		highlightColor,
+		hoverEmphasis: booleanSetting("hoverEmphasis", DEFAULT_SETTINGS.hoverEmphasis),
+	};
+}
+
 // Satisfy linter.
 export type EmbedMetadataPlugin = Plugin & {
 	settings: EmbedMetadataSettings;

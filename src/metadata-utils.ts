@@ -176,8 +176,13 @@ export function createMetadataDependencies(): MetadataDependencies {
 }
 
 // Check whether a metadata change in `file` can affect values resolved with these dependencies.
-export function metadataDependenciesInclude(dependencies: MetadataDependencies, file: TFile): boolean {
-	if (dependencies.paths.has(file.path)) {
+// `previousPath` preserves dependency matches when Obsidian has already updated a renamed TFile.
+export function metadataDependenciesInclude(
+	dependencies: MetadataDependencies,
+	file: TFile,
+	previousPath?: string
+): boolean {
+	if (dependencies.paths.has(file.path) || (previousPath !== undefined && dependencies.paths.has(previousPath))) {
 		return true;
 	}
 
@@ -240,6 +245,11 @@ export type MarkdownRefresher = {
 	refreshAll: () => void;
 };
 
+type PendingMetadataChange = {
+	file: TFile;
+	previousPath?: string;
+};
+
 // Quiet period before dispatching batched metadata changes. Keeps bursts
 // (typing, sync, bulk edits) from refreshing views once per event.
 const METADATA_CHANGE_DEBOUNCE_MS = 150;
@@ -250,22 +260,26 @@ const METADATA_CHANGE_DEBOUNCE_MS = 150;
 // settings changes.
 export function registerMarkdownRefresh(
 	plugin: Plugin,
-	onMetadataChanged: (file: TFile) => void
+	onMetadataChanged: (file: TFile, previousPath?: string) => void
 ): MarkdownRefresher {
-	const pendingFiles = new Map<string, TFile>();
+	const pendingFiles = new Map<string, PendingMetadataChange>();
 	let timerId: number | null = null;
 
 	const flush = () => {
 		timerId = null;
-		const files = Array.from(pendingFiles.values());
+		const changes = Array.from(pendingFiles.values());
 		pendingFiles.clear();
-		for (const file of files) {
-			onMetadataChanged(file);
+		for (const {file, previousPath} of changes) {
+			onMetadataChanged(file, previousPath);
 		}
 	};
 
-	const schedule = (file: TFile) => {
-		pendingFiles.set(file.path, file);
+	const schedule = (file: TFile, previousPath?: string) => {
+		const pending = pendingFiles.get(file.path);
+		pendingFiles.set(file.path, {
+			file,
+			previousPath: previousPath ?? pending?.previousPath,
+		});
 		if (timerId !== null) {
 			window.clearTimeout(timerId);
 		}
@@ -280,9 +294,9 @@ export function registerMarkdownRefresh(
 			schedule(file);
 		}
 	}));
-	plugin.registerEvent(plugin.app.vault.on("rename", (file) => {
+	plugin.registerEvent(plugin.app.vault.on("rename", (file, oldPath) => {
 		if (file instanceof TFile) {
-			schedule(file);
+			schedule(file, oldPath);
 		}
 	}));
 	plugin.register(() => {
@@ -635,6 +649,9 @@ function resolveFrontmatterValue(
 		.split(".")
 		.map((part) => part.trim())
 		.filter(Boolean);
+	if (parts.length === 0) {
+		return undefined;
+	}
 	let current: unknown = frontmatter;
 
 	for (const part of parts) {
@@ -643,7 +660,7 @@ function resolveFrontmatterValue(
 		}
 
 		const record = current as Record<string, unknown>;
-		if (part in record) {
+		if (Object.prototype.hasOwnProperty.call(record, part)) {
 			current = record[part];
 			continue;
 		}

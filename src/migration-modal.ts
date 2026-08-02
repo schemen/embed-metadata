@@ -5,7 +5,7 @@ import {EmbedMetadataPlugin} from "./settings";
 
 type MigrationMode = "dataview" | "otherSyntax";
 
-// THe default dataview embedding syntax
+// The default Dataview embedding syntax.
 const DATAVIEW_REGEX = /`=this\.([A-Za-z0-9_.-]+)`/g;
 
 interface MigrationEntry {
@@ -18,8 +18,9 @@ export class MigrationModal extends Modal {
 	private plugin: EmbedMetadataPlugin;
 	private mode: MigrationMode;
 	private entries: MigrationEntry[] = [];
-	private listEl!: HTMLElement;
+	private listEl: HTMLElement | null = null;
 	private migrateButton: HTMLButtonElement | null = null;
+	private migrationInProgress = false;
 
 	constructor(app: App, plugin: EmbedMetadataPlugin, mode: MigrationMode) {
 		super(app);
@@ -31,9 +32,7 @@ export class MigrationModal extends Modal {
 		const {contentEl} = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", {
-			text: this.mode === "dataview" ? "Migrate from Dataview" : "Migrate to current syntax",
-		});
+		this.titleEl.setText(this.mode === "dataview" ? "Migrate from Dataview" : "Migrate to current syntax");
 
 		contentEl.createEl("p", {
 			text: this.mode === "dataview"
@@ -53,13 +52,26 @@ export class MigrationModal extends Modal {
 
 		this.migrateButton = actions.createEl("button", {text: "Migrate"});
 		this.migrateButton.classList.add("mod-warning");
+		this.migrateButton.disabled = true;
 		this.migrateButton.setAttr("aria-label", "This will edit your files!");
 		this.migrateButton.setAttr("data-tooltip-position", "top");
 		this.migrateButton.addEventListener("click", () => {
 			new ConfirmMigrationModal(this.app, () => void this.runMigration()).open();
 		});
 
-		void this.loadEntries();
+		void this.loadEntries().catch(() => {
+			if (!this.listEl) {
+				return;
+			}
+			this.listEl.setText("Could not scan the vault. Close this dialog and try again.");
+			new Notice("Could not scan the vault for metadata markers.");
+		});
+	}
+
+	onClose() {
+		this.listEl = null;
+		this.migrateButton = null;
+		this.contentEl.empty();
 	}
 
 	private async loadEntries() {
@@ -79,10 +91,14 @@ export class MigrationModal extends Modal {
 	}
 
 	private renderEntries() {
-		this.listEl.empty();
+		const listEl = this.listEl;
+		if (!listEl) {
+			return;
+		}
+		listEl.empty();
 
 		if (this.entries.length === 0) {
-			this.listEl.createEl("p", {text: "No matches found."});
+			listEl.createEl("p", {text: "No matches found."});
 			if (this.migrateButton) {
 				this.migrateButton.disabled = true;
 			}
@@ -94,7 +110,7 @@ export class MigrationModal extends Modal {
 		}
 
 		for (const entry of this.entries) {
-			const row = this.listEl.createDiv({cls: "embed-metadata-migration-item"});
+			const row = listEl.createDiv({cls: "embed-metadata-migration-item"});
 			const checkbox = row.createEl("input", {type: "checkbox"});
 			checkbox.checked = entry.selected;
 			checkbox.addEventListener("change", () => {
@@ -124,6 +140,9 @@ export class MigrationModal extends Modal {
 	}
 
 	private async runMigration() {
+		if (this.migrationInProgress) {
+			return;
+		}
 		const selected = this.entries.filter((entry) => entry.selected);
 		if (selected.length === 0) {
 			new Notice("No files selected.");
@@ -134,21 +153,36 @@ export class MigrationModal extends Modal {
 		const open = getSyntaxOpen(style);
 		const close = getSyntaxClose(style);
 		let updatedFiles = 0;
-
-		for (const entry of selected) {
-			const content = await this.app.vault.read(entry.file);
-			const updated = this.mode === "dataview"
-				? content.replace(DATAVIEW_REGEX, (_, key: string) => `${open}${key}${close}`)
-				: replaceOtherSyntax(content, style, open, close);
-
-			if (updated !== content) {
-				await this.app.vault.modify(entry.file, updated);
-				updatedFiles += 1;
-			}
+		this.migrationInProgress = true;
+		if (this.migrateButton) {
+			this.migrateButton.disabled = true;
 		}
 
-		new Notice(`Migrated ${updatedFiles} file${updatedFiles === 1 ? "" : "s"}.`);
-		this.close();
+		try {
+			for (const entry of selected) {
+				const content = await this.app.vault.read(entry.file);
+				const updated = this.mode === "dataview"
+					? content.replace(DATAVIEW_REGEX, (_, key: string) => `${open}${key}${close}`)
+					: replaceOtherSyntax(content, style, open, close);
+
+				if (updated !== content) {
+					await this.app.vault.modify(entry.file, updated);
+					updatedFiles += 1;
+				}
+			}
+
+			new Notice(`Migrated ${updatedFiles} file${updatedFiles === 1 ? "" : "s"}.`);
+			this.close();
+		} catch {
+			new Notice(
+				`Migration stopped after updating ${updatedFiles} file${updatedFiles === 1 ? "" : "s"}.`
+			);
+		} finally {
+			this.migrationInProgress = false;
+			if (this.migrateButton) {
+				this.migrateButton.disabled = false;
+			}
+		}
 	}
 }
 
@@ -164,7 +198,7 @@ class ConfirmMigrationModal extends Modal {
 		const {contentEl} = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", {text: "Confirm migration"});
+		this.titleEl.setText("Confirm migration");
 		contentEl.createEl("p", {text: "This will edit your files."});
 
 		const actions = contentEl.createDiv({cls: "embed-metadata-migration-actions"});
@@ -177,6 +211,10 @@ class ConfirmMigrationModal extends Modal {
 			this.close();
 			this.onConfirm();
 		});
+	}
+
+	onClose() {
+		this.contentEl.empty();
 	}
 }
 

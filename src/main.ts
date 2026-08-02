@@ -4,10 +4,15 @@ import {registerMetadataRenderer} from "./metadata-renderer";
 import {MetadataSuggest} from "./metadata-suggest";
 import {registerOutlineRenderer} from "./outline-renderer";
 import {MarkdownRefresher, registerMarkdownRefresh} from "./metadata-utils";
-import {DEFAULT_SETTINGS, EmbedMetadataSettingTab, EmbedMetadataSettings} from "./settings";
+import {
+	DEFAULT_SETTINGS,
+	EmbedMetadataSettingTab,
+	EmbedMetadataSettings,
+	normalizeSettings,
+} from "./settings";
 
 export default class EmbedMetadata extends Plugin {
-	settings!: EmbedMetadataSettings;
+	settings: EmbedMetadataSettings = {...DEFAULT_SETTINGS};
 	private refreshOutlineViews: (() => void) | null = null;
 	private markdownRefresher: MarkdownRefresher | null = null;
 
@@ -15,9 +20,9 @@ export default class EmbedMetadata extends Plugin {
 		await this.loadSettings();
 
 		const refreshReadingView = registerMetadataRenderer(this);
-		this.markdownRefresher = registerMarkdownRefresh(this, (file) => {
-			refreshLivePreviewForDependents(file);
-			refreshReadingView(file);
+		this.markdownRefresher = registerMarkdownRefresh(this, (file, previousPath) => {
+			refreshLivePreviewForDependents(file, previousPath);
+			refreshReadingView(file, previousPath);
 		});
 		this.registerEditorExtension(createEditorExtension(this));
 		this.refreshOutlineViews = registerOutlineRenderer(this);
@@ -26,7 +31,7 @@ export default class EmbedMetadata extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<EmbedMetadataSettings>);
+		this.settings = normalizeSettings(await this.loadData());
 	}
 
 	async saveSettings() {

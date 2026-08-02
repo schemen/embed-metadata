@@ -1,6 +1,6 @@
-import {TFile, WorkspaceLeaf} from "obsidian";
+import {Component, TFile, WorkspaceLeaf} from "obsidian";
 import {createMetadataResolver, findMetadataMarkers, getSyntaxOpen} from "./metadata-utils";
-import {renderInlineMarkdownText} from "./markdown-render";
+import {clearRenderedMarkdown, renderInlineMarkdownText} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
 const OUTLINE_VIEW_TYPE = "outline";
@@ -10,6 +10,16 @@ export function registerOutlineRenderer(plugin: EmbedMetadataPlugin): () => void
 	let pending = false;
 	let timerId: number | null = null;
 	let lastRenderOutline = plugin.settings.renderOutline;
+	let renderParent: Component | null = null;
+	let trackedItems = new Set<HTMLElement>();
+
+	const clearRenderParent = () => {
+		if (renderParent) {
+			plugin.removeChild(renderParent);
+			renderParent = null;
+		}
+		trackedItems.clear();
+	};
 
 	const refreshOutlineViews = () => {
 		const renderOutline = plugin.settings.renderOutline;
@@ -17,13 +27,28 @@ export function registerOutlineRenderer(plugin: EmbedMetadataPlugin): () => void
 			return;
 		}
 
+		if (renderOutline && !renderParent) {
+			renderParent = plugin.addChild(new Component());
+		}
+
 		const leaves = plugin.app.workspace.getLeavesOfType(OUTLINE_VIEW_TYPE);
+		const currentItems = new Set<HTMLElement>();
 		for (const leaf of leaves) {
-			if (renderOutline) {
-				updateOutlineView(plugin, leaf);
+			if (renderOutline && renderParent) {
+				updateOutlineView(plugin, leaf, renderParent, currentItems);
 			} else {
 				resetOutlineView(leaf);
 			}
+		}
+		if (renderOutline) {
+			for (const item of trackedItems) {
+				if (!currentItems.has(item)) {
+					clearRenderedMarkdown(item);
+				}
+			}
+			trackedItems = currentItems;
+		} else {
+			clearRenderParent();
 		}
 
 		lastRenderOutline = renderOutline;
@@ -52,13 +77,26 @@ export function registerOutlineRenderer(plugin: EmbedMetadataPlugin): () => void
 	plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", scheduleRefresh));
 	plugin.registerEvent(plugin.app.workspace.on("layout-change", scheduleRefresh));
 	plugin.registerEvent(plugin.app.metadataCache.on("changed", scheduleRefresh));
-	plugin.register(() => cancelScheduled());
+	plugin.registerEvent(plugin.app.vault.on("delete", () => scheduleRefresh()));
+	plugin.registerEvent(plugin.app.vault.on("rename", () => scheduleRefresh()));
+	plugin.register(() => {
+		cancelScheduled();
+		clearRenderParent();
+		for (const leaf of plugin.app.workspace.getLeavesOfType(OUTLINE_VIEW_TYPE)) {
+			resetOutlineView(leaf);
+		}
+	});
 
 	scheduleRefresh();
 	return scheduleRefresh;
 }
 
-function updateOutlineView(plugin: EmbedMetadataPlugin, leaf: WorkspaceLeaf): void {
+function updateOutlineView(
+	plugin: EmbedMetadataPlugin,
+	leaf: WorkspaceLeaf,
+	renderParent: Component,
+	currentItems: Set<HTMLElement>
+): void {
 	const view = leaf.view as {containerEl?: HTMLElement; file?: TFile; getFile?: () => TFile | null};
 	const container = view.containerEl;
 	if (!container) {
@@ -81,6 +119,7 @@ function updateOutlineView(plugin: EmbedMetadataPlugin, leaf: WorkspaceLeaf): vo
 	const items = Array.from(container.querySelectorAll<HTMLElement>(OUTLINE_ITEM_SELECTOR));
 
 	for (const item of items) {
+		currentItems.add(item);
 		const currentText = item.textContent ?? "";
 		const attributeRaw = getOutlineItemRaw(item);
 		let raw = item.dataset.embedMetadataRaw ?? attributeRaw ?? currentText;
@@ -116,7 +155,7 @@ function updateOutlineView(plugin: EmbedMetadataPlugin, leaf: WorkspaceLeaf): vo
 		}
 
 		item.dataset.embedMetadataRendered = next;
-		renderInlineMarkdownText(plugin.app, file.path, item, next, plugin, (text) => {
+		renderInlineMarkdownText(plugin.app, file.path, item, next, renderParent, (text) => {
 			item.dataset.embedMetadataRenderedText = text;
 		});
 
