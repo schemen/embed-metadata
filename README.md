@@ -1,18 +1,21 @@
 # Embed Metadata
+
 Render frontmatter metadata (Obsidian Properties) inside your notes with a lightweight inline `[%key]` or `{{key}}` syntax.
 
-The intent for developing this is as a lightweight replacement for Dataviews `=this.key` embedded metadata rendering, specifically if [Obsidian Bases](https://help.obsidian.md/bases) cover most everything else.
+The intent for developing this is as a lightweight replacement for Dataview's `=this.key` embedded metadata rendering, specifically if [Obsidian Bases](https://help.obsidian.md/bases) cover most everything else.
 
 ## Demo
-![demo.web](media/demo.gif)
+
+![Embed Metadata demo](media/demo.gif)
 
 ## Installation
 
-This plugin is not yet added to the Community List, pending approval. You can either manually install it by creating a folder within your `.obsidian/plugin/` folder called `embed-metadata` and and download a release within, resulting in a `main.js`, `style.css` and `manifest.js`.
+Install Embed Metadata from **Settings → Community plugins → Browse** in Obsidian.
 
-The easiest way would be by adding this repository to [BRAT](https://github.com/TfTHacker/obsidian42-brat), a plugin installer from the community which you can install via  Obsidian.
+For a manual installation, download `main.js`, `manifest.json`, and `styles.css` from the latest GitHub release and place them in `<Vault>/.obsidian/plugins/embed-metadata/`. Reload Obsidian, then enable the plugin under **Settings → Community plugins**.
 
 ## Usage
+
 Add frontmatter (Properties) to a note:
 
 ```yaml
@@ -63,6 +66,7 @@ remote property values is rendered relative to the target note, so links stored
 in that property keep the same meaning.
 
 Built-in keys (when enabled):
+
 - `filename` (full file name with extension)
 - `basename` (file name without extension)
 - `extension`
@@ -76,13 +80,14 @@ Built-in keys (when enabled):
 
 Use **Settings → Community plugins → Embed Metadata** to choose the syntax
 format: `[%key]` or `{{key}}`.
+
 - Optional case-insensitive key lookup
 - Optional built-in keys (enabled by default; frontmatter keys take priority)
 - Optional outline rendering (experimental; replaces markers in the Outline sidebar)
 
 Visual look options apply in Live Preview:
+
 - Bold / Italic / Underline toggles
-- Optional underline color override (defaults to text color)
 - Optional highlight with theme color or override
 - Hover emphasis (subtle style shift on hover)
 
@@ -93,6 +98,7 @@ If you use nested YAML, use Source mode to view them, or flatten keys (for examp
 ## Migration
 
 You can migrate existing notes:
+
 - **Migrate from dataview** converts dataviews backticked `=this.key` syntax to your selected format.
 - **Migrate to current syntax** converts the other supported syntax formats to the selected one.
 
@@ -102,11 +108,25 @@ Vault-wide Markdown file scanning is used only for these user-initiated migratio
 normal rendering or autocomplete.
 
 ## Autocomplete
+
 Type the configured opener (`[%` or `{{`) to see a dropdown of frontmatter keys
 from the current file. For remote references, use Obsidian's normal file
-autocomplete inside `[[...]]`, then type `#` after the completed target to see
+autocomplete inside `[[...]]`, then type `@` after the completed target to see
 that note's property keys. Results are sorted alphabetically and update as you
 type.
 
+## Development
+
+Use Node.js 22 or newer and npm:
+
+```bash
+npm ci
+npm run build
+npm run lint
+```
+
+Production builds generate the ignored `main.js` release artifact at the repository root. Tag pushes run the release workflow, which builds from the lockfile, attests the release assets, and creates a draft GitHub release for review.
+
 ## Disclaimer
+
 AI was used during the development of this project.
