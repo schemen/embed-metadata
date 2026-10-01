@@ -234,27 +234,6 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 		];
 	}
 
-	// Obsidian versions before 1.13 use the imperative settings API.
-	display(): void {
-		this.containerEl.empty();
-
-		for (const group of this.getSettingDefinitions()) {
-			new Setting(this.containerEl)
-				.setName(group.heading)
-				.setHeading();
-
-			for (const definition of group.items) {
-				const setting = new Setting(this.containerEl).setName(definition.name);
-				if (definition.desc) {
-					setting.setDesc(definition.desc);
-				}
-				if (definition.render) {
-					definition.render(setting);
-				}
-			}
-		}
-	}
-
 	private createToggleDefinition(
 		key: BooleanSettingKey,
 		name: string,
