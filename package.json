@@ -1,6 +1,6 @@
 {
 	"name": "embed-metadata",
-	"version": "0.10.1",
+	"version": "0.10.2",
 	"description": "Render frontmatter metadata inside Obsidian notes with lightweight inline syntax.",
 	"private": true,
 	"main": "main.js",
@@ -17,14 +17,14 @@
 		"@codemirror/state": "6.5.0",
 		"@codemirror/view": "6.38.6",
 		"@eslint/js": "^9.39.4",
-		"@types/node": "^22.15.17",
+		"@types/node": "^22.20.5",
 		"esbuild": "0.25.5",
 		"eslint": "^9.39.4",
 		"eslint-plugin-obsidianmd": "^0.4.0",
-		"globals": "^17.6.0",
+		"globals": "^17.13.0",
 		"jiti": "^2.6.1",
 		"obsidian": "latest",
 		"typescript": "^5.8.3",
-		"typescript-eslint": "^8.59.1"
+		"typescript-eslint": "^8.71.1"
 	}
 }
