@@ -74,7 +74,9 @@ export type EmbedMetadataPlugin = Plugin & {
 	saveSettings: () => Promise<void>;
 };
 
+// `id` is a stable per-setting key (Obsidian 1.14+); older versions ignore it.
 type RenderedSettingDefinition = {
+	id?: string;
 	name: string;
 	desc?: string;
 	render: (setting: Setting) => void;
@@ -83,6 +85,7 @@ type RenderedSettingDefinition = {
 };
 
 type InformationalSettingDefinition = {
+	id?: string;
 	name: string;
 	desc?: string;
 	render?: never;
@@ -126,6 +129,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 				heading: "Syntax",
 				items: [
 					{
+						id: "syntaxStyle",
 						name: "Syntax format",
 						desc: "Choose the syntax used to embed frontmatter values.",
 						render: (setting) => {
@@ -152,6 +156,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 						"Enable built-ins like {{filename}}, {{path}}, and {{mtime}}."
 					),
 					{
+						id: "remoteSyntaxInfo",
 						name: "Remote property syntax",
 						desc: "Reference another note's property with [[Note]]@key; autocomplete is offered after @."
 							+ " The older [[Note]]#key form still renders but is deprecated and will be removed in a"
@@ -174,6 +179,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 					this.createToggleDefinition("underline", "Underline", "Underline rendered values."),
 					this.createToggleDefinition("highlight", "Highlight", "Highlight rendered values."),
 					{
+						id: "highlightColor",
 						name: "Highlight color",
 						desc: "Override highlight color (otherwise uses theme highlight).",
 						render: (setting) => {
@@ -208,6 +214,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 				heading: "Migration",
 				items: [
 					{
+						id: "migrateDataview",
 						name: "Migrate from dataview",
 						desc: "Convert backticked `=this.key` syntax to the selected format.",
 						render: (setting) => {
@@ -219,6 +226,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						id: "migrateSyntax",
 						name: "Migrate to current syntax",
 						desc: "Convert other supported syntax formats to the selected format.",
 						render: (setting) => {
@@ -240,6 +248,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 		desc: string
 	): RenderedSettingDefinition {
 		return {
+			id: key,
 			name,
 			desc,
 			render: (setting) => {
