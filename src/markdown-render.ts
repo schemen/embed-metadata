@@ -6,6 +6,22 @@ import {App, Component, MarkdownRenderer} from "obsidian";
 // `<` (e.g. `a < b`) does not look like a tag and stays on the fast path.
 const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|https?:\/\/|\n|<\/?[a-zA-Z][^>]*>)/;
 
+// Value of a `!`-prefixed marker: links become embeds, a URL becomes an image
+// embed, and any other value is taken as a file name or path.
+export function toEmbedMarkdown(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return trimmed;
+	}
+	if (/\[\[|\]\(/.test(trimmed)) {
+		return trimmed.replace(/(^|[^!])(\[\[|\[[^\]]*\]\()/g, "$1!$2");
+	}
+	if (/^https?:\/\/\S+$/.test(trimmed)) {
+		return `![](${trimmed})`;
+	}
+	return `![[${trimmed}]]`;
+}
+
 type ActiveRender = {
 	parent: Component;
 	component: Component;

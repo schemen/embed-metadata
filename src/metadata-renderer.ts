@@ -18,7 +18,7 @@ import {
 	type MetadataResolution,
 	type MetadataResolver,
 } from "./metadata-utils";
-import {clearRenderedMarkdown, createDetachedSpan, renderInlineMarkdown} from "./markdown-render";
+import {clearRenderedMarkdown, createDetachedSpan, renderInlineMarkdown, toEmbedMarkdown} from "./markdown-render";
 import {EmbedMetadataPlugin} from "./settings";
 
 const VALUE_CLASS = "embed-metadata-value";
@@ -28,6 +28,22 @@ const UNRESOLVED_CLASS = "embed-metadata-unresolved";
 // plugin), code, and spans we have already rendered.
 const EXCLUDED_SELECTOR =
 	`.cm-line, code, pre, .cm-inline-code, .cm-hmd-internal-code, .${VALUE_CLASS}, .${UNRESOLVED_CLASS}`;
+
+// A note embedded by a `!` marker renders inside our value span (and, in live
+// preview, inside .cm-line). Its content is that note's own text, so it is
+// processed like any note; code and values inside it stay excluded.
+function isExcluded(parent: HTMLElement): boolean {
+	const excluded = parent.closest(EXCLUDED_SELECTOR);
+	const embedContent = parent.closest(".markdown-embed-content");
+	return excluded !== null && !(embedContent && excluded.contains(embedContent));
+}
+
+// Notes whose embeds enclose `el`. Each `!` marker span stores the full chain
+// (its enclosing chain plus its own note), since a span is rendered before it
+// is attached and walking further up the DOM would miss the outer notes.
+function getEmbedChain(el: Element): string[] {
+	return el.closest<HTMLElement>("[data-embed-metadata-embed]")?.dataset.embedMetadataEmbed?.split("\n") ?? [];
+}
 
 // What each span last rendered, so refreshes can skip unchanged values.
 const lastRendered = new WeakMap<HTMLElement, string>();
@@ -42,7 +58,9 @@ export function registerMetadataRenderer(
 		// Runs for Reading view and for Live Preview rendered blocks (callouts,
 		// embeds). Raw editable text is handled by the CodeMirror plugin and is
 		// excluded below via the `.cm-line` filter, so the two never overlap.
-		if (!ctx.sourcePath) {
+		// A note already embedded further up keeps its markers raw, so a note
+		// embedding itself (directly or through others) cannot recurse forever.
+		if (!ctx.sourcePath || getEmbedChain(el).includes(ctx.sourcePath)) {
 			return;
 		}
 
@@ -73,7 +91,7 @@ export function registerMetadataRenderer(
 				}
 
 				const parent = node.parentElement;
-				if (!parent || parent.closest(EXCLUDED_SELECTOR)) {
+				if (!parent || isExcluded(parent)) {
 					return NodeFilter.FILTER_REJECT;
 				}
 
@@ -115,7 +133,7 @@ function replaceSyntaxInTextNode(
 		return;
 	}
 
-	const markers = findMetadataMarkers(text, plugin.settings.syntaxStyle);
+	const markers = findMetadataMarkers(text, plugin.settings.syntaxStyle, plugin.settings.embedPrefix);
 	if (markers.length === 0) {
 		return;
 	}
@@ -129,7 +147,7 @@ function replaceSyntaxInTextNode(
 			replacements.push(before);
 		}
 
-		replacements.push(createMarkerSpan(marker, resolver, doc, sourcePath, plugin, ctx));
+		replacements.push(createMarkerSpan(marker, textNode.parentElement ?? doc.body, resolver, doc, sourcePath, plugin, ctx));
 
 		lastIndex = marker.to;
 	}
@@ -171,7 +189,7 @@ function replaceFragmentedMarkers(
 			}
 
 			const parent = node.parentElement;
-			if (!parent || parent.closest(EXCLUDED_SELECTOR)) {
+			if (!parent || isExcluded(parent)) {
 				return NodeFilter.FILTER_REJECT;
 			}
 
@@ -216,7 +234,7 @@ function reassembleContainer(
 		return;
 	}
 
-	const markers = findMetadataMarkers(source, plugin.settings.syntaxStyle);
+	const markers = findMetadataMarkers(source, plugin.settings.syntaxStyle, plugin.settings.embedPrefix);
 
 	// Replace from the end so earlier offsets and untouched nodes stay valid.
 	for (let i = markers.length - 1; i >= 0; i -= 1) {
@@ -236,7 +254,7 @@ function reassembleContainer(
 			continue;
 		}
 
-		const span = createMarkerSpan(marker, resolver, doc, sourcePath, plugin, ctx);
+		const span = createMarkerSpan(marker, container, resolver, doc, sourcePath, plugin, ctx);
 		const range = doc.createRange();
 		range.setStart(startSeg.node, marker.from - startSeg.start);
 		range.setEnd(endSeg.node, marker.to - endSeg.start);
@@ -275,6 +293,7 @@ function findSegmentAt(segments: SourceSegment[], offset: number): SourceSegment
 // and re-resolve it in place when a dependency changes.
 function createMarkerSpan(
 	marker: MetadataMarker,
+	parent: Element,
 	resolver: MetadataResolver,
 	doc: Document,
 	sourcePath: string,
@@ -286,6 +305,9 @@ function createMarkerSpan(
 	span.dataset.embedMetadataReference = marker.raw;
 	span.dataset.embedMetadataMarker = marker.marker;
 	span.dataset.embedMetadataSourcePath = sourcePath;
+	if (marker.embed) {
+		span.dataset.embedMetadataEmbed = [...getEmbedChain(parent), sourcePath].join("\n");
+	}
 	const renderParent = new MarkdownRenderChild(span);
 	renderParents.set(span, renderParent);
 	renderParent.register(() => {
@@ -329,7 +351,8 @@ function applyResolution(
 	}
 	lastRendered.set(span, renderKey);
 	const renderParent = renderParents.get(span) ?? plugin;
-	renderInlineMarkdown(plugin.app, resolution.targetFile.path, span, resolution.value, renderParent);
+	const value = span.dataset.embedMetadataEmbed === undefined ? resolution.value : toEmbedMarkdown(resolution.value);
+	renderInlineMarkdown(plugin.app, resolution.targetFile.path, span, value, renderParent);
 }
 
 // Re-resolve only the spans whose value can be affected by the changed file.
