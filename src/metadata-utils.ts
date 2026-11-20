@@ -136,7 +136,7 @@ export function createMetadataResolver(
 	sourceFile: TFile,
 	caseInsensitive: boolean,
 	builtInKeysEnabled: boolean,
-	dateDisplay: DateDisplaySettings
+	display: DateDisplaySettings & {booleanCheckboxes: boolean}
 ): MetadataResolver {
 	const resolverCache = new Map<string, FrontmatterResolver>();
 	const dependencies = createMetadataDependencies();
@@ -165,8 +165,9 @@ export function createMetadataResolver(
 				caseInsensitive,
 				targetFile,
 				builtInKeysEnabled,
-				dateDisplay,
-				isDateKey
+				display,
+				isDateKey,
+				display.booleanCheckboxes
 			);
 			resolverCache.set(targetFile.path, resolveValue);
 		}
@@ -541,7 +542,8 @@ export function resolveFrontmatterString(
 	frontmatter: Record<string, unknown>,
 	keyPath: string,
 	caseInsensitive = false,
-	keyMapCache?: WeakMap<object, Map<string, string>>
+	keyMapCache?: WeakMap<object, Map<string, string>>,
+	booleanCheckboxes = false
 ): string | null {
 	const value = resolveFrontmatterValue(frontmatter, keyPath, caseInsensitive, keyMapCache);
 	if (value === undefined) {
@@ -549,6 +551,9 @@ export function resolveFrontmatterString(
 	}
 	if (value === null) {
 		return "";
+	}
+	if (typeof value === "boolean" && booleanCheckboxes) {
+		return `<input type="checkbox" disabled${value ? " checked" : ""}>`;
 	}
 	return formatFrontmatterValue(value);
 }
@@ -560,7 +565,8 @@ export function createFrontmatterResolver(
 	file?: TFile | null,
 	builtInKeysEnabled = false,
 	dateDisplay: DateDisplaySettings = DEFAULT_DATE_DISPLAY,
-	isDateKey?: (key: string) => boolean
+	isDateKey?: (key: string) => boolean,
+	booleanCheckboxes = false
 ): FrontmatterResolver {
 	let valueCache: Map<string, string | null> | null = null;
 	let keyMapCache: WeakMap<object, Map<string, string>> | undefined;
@@ -577,7 +583,7 @@ export function createFrontmatterResolver(
 			keyMapCache = new WeakMap();
 		}
 
-		const raw = resolveFrontmatterString(frontmatter, keyPath, caseInsensitive, keyMapCache);
+		const raw = resolveFrontmatterString(frontmatter, keyPath, caseInsensitive, keyMapCache, booleanCheckboxes);
 		if (raw !== null) {
 			const value = isDateKey?.(keyPath) ? formatDateValue(raw, dateDisplay) : raw;
 			valueCache.set(keyPath, value);
