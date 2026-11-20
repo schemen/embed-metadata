@@ -64,7 +64,7 @@ class MetadataViewPlugin {
 	decorations: DecorationSet;
 	private plugin: EmbedMetadataPlugin;
 	private view: EditorView;
-	private cursorMarkerKey: string;
+	private revealedMarkerKey: string;
 	private lineCache: Map<number, LineMarkers>;
 	private syntaxStyle: string;
 	private dependencies: MetadataDependencies;
@@ -77,7 +77,7 @@ class MetadataViewPlugin {
 		const build = buildDecorations(view, plugin, this.lineCache);
 		this.decorations = build.decorations;
 		this.dependencies = build.dependencies;
-		this.cursorMarkerKey = getCursorMarkerKey(view, plugin);
+		this.revealedMarkerKey = getRevealedMarkerKey(view, plugin, this.lineCache);
 		livePreviewInstances.add(this);
 	}
 
@@ -103,17 +103,19 @@ class MetadataViewPlugin {
 			needsRebuild = true;
 		}
 
-		if (update.docChanged || update.selectionSet) {
-			const nextCursorMarkerKey = getCursorMarkerKey(update.view, this.plugin);
-			if (nextCursorMarkerKey !== this.cursorMarkerKey) {
-				this.cursorMarkerKey = nextCursorMarkerKey;
-				needsRebuild = true;
-			}
-		}
-
 		if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(livePreviewRefreshEffect)))) {
 			needsRebuild = true;
 			forceFullScan = true;
+		}
+
+		// Recompute on every rebuild too: scrolling or a syntax change alters
+		// which markers the key covers, and a stale key could hide a change.
+		if (needsRebuild || update.docChanged || update.selectionSet) {
+			const nextRevealedMarkerKey = getRevealedMarkerKey(update.view, this.plugin, this.lineCache);
+			if (nextRevealedMarkerKey !== this.revealedMarkerKey) {
+				this.revealedMarkerKey = nextRevealedMarkerKey;
+				needsRebuild = true;
+			}
 		}
 
 		if (needsRebuild) {
@@ -215,7 +217,7 @@ function buildDecorations(
 				const start = line.from + marker.from;
 				const end = line.from + marker.to;
 
-				if (selectionRanges.some((sel) => sel.from === sel.to && sel.from >= start && sel.to <= end)) {
+				if (selectionRanges.some((sel) => selectionTouchesMarker(sel, start, end))) {
 					continue;
 				}
 
@@ -597,37 +599,50 @@ function getFrontmatterRange(doc: Text): {from: number; to: number} | null {
 	return null;
 }
 
-function getCursorMarkerKey(view: EditorView, plugin: EmbedMetadataPlugin): string {
-	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
-	const markerKeys: string[] = [];
+// A marker shows its raw syntax while a selection range touches it: a cursor
+// inside or at its edge, or a selection covering any part of it. This matches
+// how Live Preview reveals native syntax such as links.
+function selectionTouchesMarker(sel: {from: number; to: number}, start: number, end: number): boolean {
+	return sel.from <= end && sel.to >= start;
+}
 
-	for (const range of view.state.selection.ranges) {
-		if (range.from !== range.to) {
-			continue;
-		}
+// Identifies the markers the selection currently reveals, so selection changes
+// only rebuild decorations when that set changes. Decorations exist only for
+// visible lines, so only those are scanned; a select-all in a long note stays
+// cheap.
+function getRevealedMarkerKey(
+	view: EditorView,
+	plugin: EmbedMetadataPlugin,
+	lineCache: Map<number, LineMarkers>
+): string {
+	const doc = view.state.doc;
+	const syntaxStyle = plugin.settings.syntaxStyle;
+	const syntaxOpen = getSyntaxOpen(syntaxStyle);
+	const markerKeys = new Set<string>();
 
-		const pos = range.from;
-		const line = view.state.doc.lineAt(pos);
-		if (!line.text.includes(syntaxOpen)) {
-			continue;
-		}
+	for (const sel of view.state.selection.ranges) {
+		for (const visible of view.visibleRanges) {
+			const from = Math.max(sel.from, visible.from);
+			const to = Math.min(sel.to, visible.to);
+			if (from > to) {
+				continue;
+			}
 
-		for (const marker of findMetadataMarkers(line.text, plugin.settings.syntaxStyle)) {
-			const start = line.from + marker.from;
-			const end = line.from + marker.to;
-			if (pos >= start && pos <= end) {
-				markerKeys.push(`${start}:${end}`);
-				break;
+			const endLine = doc.lineAt(to).number;
+			for (let lineNumber = doc.lineAt(from).number; lineNumber <= endLine; lineNumber += 1) {
+				const line = doc.line(lineNumber);
+				for (const marker of getLineMarkers(lineNumber, line, lineCache, syntaxStyle, syntaxOpen)) {
+					const start = line.from + marker.from;
+					const end = line.from + marker.to;
+					if (selectionTouchesMarker(sel, start, end)) {
+						markerKeys.add(`${start}:${end}`);
+					}
+				}
 			}
 		}
 	}
 
-	if (markerKeys.length === 0) {
-		return "";
-	}
-
-	markerKeys.sort();
-	return markerKeys.join("|");
+	return Array.from(markerKeys).sort().join("|");
 }
 
 class MetadataWidget extends WidgetType {
