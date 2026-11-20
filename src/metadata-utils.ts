@@ -1,5 +1,12 @@
 // Utils for all other modules
 import {App, MarkdownView, normalizePath, Plugin, TFile} from "obsidian";
+import {
+	DEFAULT_DATE_DISPLAY,
+	formatDateValue,
+	formatTimestamp,
+	isDateProperty,
+	type DateDisplaySettings,
+} from "./date-format";
 
 // Syntax parsing and frontmatter resolution utilities.
 export type SyntaxStyle = "brackets" | "doubleBraces";
@@ -128,10 +135,12 @@ export function createMetadataResolver(
 	app: App,
 	sourceFile: TFile,
 	caseInsensitive: boolean,
-	builtInKeysEnabled: boolean
+	builtInKeysEnabled: boolean,
+	dateDisplay: DateDisplaySettings
 ): MetadataResolver {
 	const resolverCache = new Map<string, FrontmatterResolver>();
 	const dependencies = createMetadataDependencies();
+	const isDateKey = (key: string) => isDateProperty(app, key);
 
 	const resolve = (reference: MetadataReference): MetadataResolution => {
 		const targetFile = reference.target
@@ -155,7 +164,9 @@ export function createMetadataResolver(
 				frontmatter,
 				caseInsensitive,
 				targetFile,
-				builtInKeysEnabled
+				builtInKeysEnabled,
+				dateDisplay,
+				isDateKey
 			);
 			resolverCache.set(targetFile.path, resolveValue);
 		}
@@ -547,7 +558,9 @@ export function createFrontmatterResolver(
 	frontmatter: Record<string, unknown>,
 	caseInsensitive: boolean,
 	file?: TFile | null,
-	builtInKeysEnabled = false
+	builtInKeysEnabled = false,
+	dateDisplay: DateDisplaySettings = DEFAULT_DATE_DISPLAY,
+	isDateKey?: (key: string) => boolean
 ): FrontmatterResolver {
 	let valueCache: Map<string, string | null> | null = null;
 	let keyMapCache: WeakMap<object, Map<string, string>> | undefined;
@@ -564,14 +577,15 @@ export function createFrontmatterResolver(
 			keyMapCache = new WeakMap();
 		}
 
-		const value = resolveFrontmatterString(frontmatter, keyPath, caseInsensitive, keyMapCache);
-		if (value !== null) {
+		const raw = resolveFrontmatterString(frontmatter, keyPath, caseInsensitive, keyMapCache);
+		if (raw !== null) {
+			const value = isDateKey?.(keyPath) ? formatDateValue(raw, dateDisplay) : raw;
 			valueCache.set(keyPath, value);
 			return value;
 		}
 
 		if (builtInKeysEnabled && file) {
-			const builtInValue = resolveBuiltInValue(file, keyPath, caseInsensitive);
+			const builtInValue = resolveBuiltInValue(file, keyPath, caseInsensitive, dateDisplay);
 			valueCache.set(keyPath, builtInValue);
 			return builtInValue;
 		}
@@ -606,7 +620,12 @@ export function getBuiltInKeys(): string[] {
 	return [...BUILT_IN_KEYS];
 }
 
-function resolveBuiltInValue(file: TFile, keyPath: string, caseInsensitive: boolean): string | null {
+function resolveBuiltInValue(
+	file: TFile,
+	keyPath: string,
+	caseInsensitive: boolean,
+	dateDisplay: DateDisplaySettings
+): string | null {
 	const key = caseInsensitive ? keyPath.toLowerCase() : keyPath;
 	if (!key || key.includes(".")) {
 		return null;
@@ -626,16 +645,12 @@ function resolveBuiltInValue(file: TFile, keyPath: string, caseInsensitive: bool
 		case "link":
 			return `[[${file.path}|${file.basename}]]`;
 		case "ctime":
-			return formatBuiltInDate(file.stat.ctime);
+			return formatTimestamp(file.stat.ctime, dateDisplay);
 		case "mtime":
-			return formatBuiltInDate(file.stat.mtime);
+			return formatTimestamp(file.stat.mtime, dateDisplay);
 		default:
 			return null;
 	}
-}
-
-function formatBuiltInDate(timestamp: number): string {
-	return new Date(timestamp).toLocaleString();
 }
 
 // Walk the frontmatter object to resolve a dot-path.

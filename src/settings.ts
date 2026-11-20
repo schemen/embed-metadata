@@ -1,4 +1,5 @@
 import {App, Plugin, PluginSettingTab, Setting} from "obsidian";
+import {DATE_FORMATS, DEFAULT_DATE_DISPLAY, TIME_FORMATS, type DateFormat, type TimeFormat} from "./date-format";
 import {SyntaxStyle} from "./metadata-utils";
 import {MigrationModal} from "./migration-modal";
 
@@ -6,6 +7,8 @@ export interface EmbedMetadataSettings {
 	syntaxStyle: SyntaxStyle;
 	caseInsensitiveKeys: boolean;
 	builtInKeysEnabled: boolean;
+	dateFormat: DateFormat;
+	timeFormat: TimeFormat;
 	renderOutline: boolean;
 	bold: boolean;
 	italic: boolean;
@@ -21,6 +24,7 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	syntaxStyle: "brackets",
 	caseInsensitiveKeys: false,
 	builtInKeysEnabled: true,
+	...DEFAULT_DATE_DISPLAY,
 	renderOutline: false,
 	bold: false,
 	italic: false,
@@ -42,6 +46,12 @@ export function normalizeSettings(data: unknown): EmbedMetadataSettings {
 		const value = saved[key];
 		return typeof value === "boolean" ? value : fallback;
 	};
+	const optionSetting = <T extends string>(key: string, options: Record<T, string>, fallback: T): T => {
+		const value = saved[key];
+		return typeof value === "string" && Object.prototype.hasOwnProperty.call(options, value)
+			? value as T
+			: fallback;
+	};
 	const syntaxStyle = saved.syntaxStyle === "brackets" || saved.syntaxStyle === "doubleBraces"
 		? saved.syntaxStyle
 		: DEFAULT_SETTINGS.syntaxStyle;
@@ -54,6 +64,8 @@ export function normalizeSettings(data: unknown): EmbedMetadataSettings {
 		syntaxStyle,
 		caseInsensitiveKeys: booleanSetting("caseInsensitiveKeys", DEFAULT_SETTINGS.caseInsensitiveKeys),
 		builtInKeysEnabled: booleanSetting("builtInKeysEnabled", DEFAULT_SETTINGS.builtInKeysEnabled),
+		dateFormat: optionSetting("dateFormat", DATE_FORMATS, DEFAULT_SETTINGS.dateFormat),
+		timeFormat: optionSetting("timeFormat", TIME_FORMATS, DEFAULT_SETTINGS.timeFormat),
 		renderOutline: booleanSetting("renderOutline", DEFAULT_SETTINGS.renderOutline),
 		bold: booleanSetting("bold", DEFAULT_SETTINGS.bold),
 		italic: booleanSetting("italic", DEFAULT_SETTINGS.italic),
@@ -168,6 +180,44 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 						"Render in outline (experimental)",
 						"Render metadata markers in the outline view."
 					),
+				],
+			},
+			{
+				type: "group",
+				heading: "Dates",
+				items: [
+					{
+						id: "dateFormat",
+						name: "Date format",
+						desc: "Display format for date properties and the ctime and mtime keys.",
+						render: (setting) => {
+							setting.addDropdown((dropdown) => {
+								dropdown
+									.addOptions(DATE_FORMATS)
+									.setValue(this.plugin.settings.dateFormat)
+									.onChange(async (value) => {
+										this.plugin.settings.dateFormat = value as DateFormat;
+										await this.plugin.saveSettings();
+									});
+							});
+						},
+					},
+					{
+						id: "timeFormat",
+						name: "Time format",
+						desc: "Display format for times in date & time properties.",
+						render: (setting) => {
+							setting.addDropdown((dropdown) => {
+								dropdown
+									.addOptions(TIME_FORMATS)
+									.setValue(this.plugin.settings.timeFormat)
+									.onChange(async (value) => {
+										this.plugin.settings.timeFormat = value as TimeFormat;
+										await this.plugin.saveSettings();
+									});
+							});
+						},
+					},
 				],
 			},
 			{

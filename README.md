@@ -84,6 +84,7 @@ format: `[%key]` or `{{key}}`.
 - Optional case-insensitive key lookup
 - Optional built-in keys (enabled by default; frontmatter keys take priority)
 - Optional outline rendering (experimental; replaces markers in the Outline sidebar)
+- Date and time format for Date and Date & time properties and `ctime`/`mtime` (default: as written)
 
 Visual look options apply in Live Preview:
 

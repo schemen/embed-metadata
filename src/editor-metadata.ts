@@ -171,7 +171,8 @@ function buildDecorations(
 		plugin.app,
 		file,
 		plugin.settings.caseInsensitiveKeys,
-		plugin.settings.builtInKeysEnabled
+		plugin.settings.builtInKeysEnabled,
+		plugin.settings
 	);
 
 	const ranges = forceFullScan
