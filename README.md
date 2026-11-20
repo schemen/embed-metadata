@@ -85,6 +85,7 @@ format: `[%key]` or `{{key}}`.
 - Optional built-in keys (enabled by default; frontmatter keys take priority)
 - Optional outline rendering (experimental; replaces markers in the Outline sidebar)
 - Date and time format for Date and Date & time properties and `ctime`/`mtime` (default: as written)
+- Show checkbox properties as checkboxes instead of `true`/`false` (default: on)
 
 Visual look options apply in Live Preview:
 

@@ -9,6 +9,7 @@ export interface EmbedMetadataSettings {
 	builtInKeysEnabled: boolean;
 	dateFormat: DateFormat;
 	timeFormat: TimeFormat;
+	booleanCheckboxes: boolean;
 	renderOutline: boolean;
 	bold: boolean;
 	italic: boolean;
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	caseInsensitiveKeys: false,
 	builtInKeysEnabled: true,
 	...DEFAULT_DATE_DISPLAY,
+	booleanCheckboxes: true,
 	renderOutline: false,
 	bold: false,
 	italic: false,
@@ -66,6 +68,7 @@ export function normalizeSettings(data: unknown): EmbedMetadataSettings {
 		builtInKeysEnabled: booleanSetting("builtInKeysEnabled", DEFAULT_SETTINGS.builtInKeysEnabled),
 		dateFormat: optionSetting("dateFormat", DATE_FORMATS, DEFAULT_SETTINGS.dateFormat),
 		timeFormat: optionSetting("timeFormat", TIME_FORMATS, DEFAULT_SETTINGS.timeFormat),
+		booleanCheckboxes: booleanSetting("booleanCheckboxes", DEFAULT_SETTINGS.booleanCheckboxes),
 		renderOutline: booleanSetting("renderOutline", DEFAULT_SETTINGS.renderOutline),
 		bold: booleanSetting("bold", DEFAULT_SETTINGS.bold),
 		italic: booleanSetting("italic", DEFAULT_SETTINGS.italic),
@@ -116,6 +119,7 @@ type CompatibleSettingGroup = {
 type BooleanSettingKey =
 	| "caseInsensitiveKeys"
 	| "builtInKeysEnabled"
+	| "booleanCheckboxes"
 	| "renderOutline"
 	| "bold"
 	| "italic"
@@ -184,7 +188,7 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
-				heading: "Dates",
+				heading: "Values",
 				items: [
 					{
 						id: "dateFormat",
@@ -218,6 +222,11 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 							});
 						},
 					},
+					this.createToggleDefinition(
+						"booleanCheckboxes",
+						"Checkboxes for true/false",
+						"Show checkbox properties as checkboxes instead of true or false."
+					),
 				],
 			},
 			{
