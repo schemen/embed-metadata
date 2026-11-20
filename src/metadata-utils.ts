@@ -36,6 +36,8 @@ export type MetadataMarker = MetadataReference & {
 	from: number;
 	to: number;
 	marker: string;
+	// Preceded by `!`, which is then part of the marker's range and text.
+	embed: boolean;
 };
 export type BuiltInKey =
 	| "filename"
@@ -75,7 +77,7 @@ export function getSyntaxTriggerRegex(style: SyntaxStyle): RegExp {
 		: /\[%([A-Za-z0-9_.-]*)$/;
 }
 
-export function findMetadataMarkers(text: string, style: SyntaxStyle): MetadataMarker[] {
+export function findMetadataMarkers(text: string, style: SyntaxStyle, detectEmbeds = false): MetadataMarker[] {
 	const markers: MetadataMarker[] = [];
 	const open = getSyntaxOpen(style);
 	const close = getSyntaxClose(style);
@@ -97,13 +99,16 @@ export function findMetadataMarkers(text: string, style: SyntaxStyle): MetadataM
 		const inner = text.slice(start + open.length, end - close.length);
 		const reference = parseMetadataReference(inner);
 		if (reference) {
+			const embed = detectEmbeds && start > offset && text[start - 1] === "!";
+			const from = embed ? start - 1 : start;
 			markers.push({
 				key: reference.key,
 				target: reference.target,
 				raw: inner,
-				from: start,
+				from,
 				to: end,
-				marker: text.slice(start, end),
+				marker: text.slice(from, end),
+				embed,
 			});
 		}
 

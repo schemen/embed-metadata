@@ -10,9 +10,8 @@ import {
 	metadataDependenciesInclude,
 	type MetadataDependencies,
 	type MetadataMarker,
-	type SyntaxStyle,
 } from "./metadata-utils";
-import {createDetachedSpan, renderInlineMarkdown} from "./markdown-render";
+import {createDetachedSpan, renderInlineMarkdown, toEmbedMarkdown} from "./markdown-render";
 import {applyValueStyles, getStyleKey} from "./metadata-style";
 import {EmbedMetadataPlugin} from "./settings";
 
@@ -66,14 +65,14 @@ class MetadataViewPlugin {
 	private view: EditorView;
 	private revealedMarkerKey: string;
 	private lineCache: Map<number, LineMarkers>;
-	private syntaxStyle: string;
+	private markerSyntax: string;
 	private dependencies: MetadataDependencies;
 
 	constructor(plugin: EmbedMetadataPlugin, view: EditorView) {
 		this.plugin = plugin;
 		this.view = view;
 		this.lineCache = new Map();
-		this.syntaxStyle = plugin.settings.syntaxStyle;
+		this.markerSyntax = getMarkerSyntax(plugin);
 		const build = buildDecorations(view, plugin, this.lineCache);
 		this.decorations = build.decorations;
 		this.dependencies = build.dependencies;
@@ -85,8 +84,8 @@ class MetadataViewPlugin {
 		let needsRebuild = false;
 		let forceFullScan = false;
 
-		if (this.syntaxStyle !== this.plugin.settings.syntaxStyle) {
-			this.syntaxStyle = this.plugin.settings.syntaxStyle;
+		if (this.markerSyntax !== getMarkerSyntax(this.plugin)) {
+			this.markerSyntax = getMarkerSyntax(this.plugin);
 			this.lineCache.clear();
 			needsRebuild = true;
 		}
@@ -192,7 +191,7 @@ function buildDecorations(
 			}
 			seenLines.add(lineNumber);
 
-			const markers = getLineMarkers(lineNumber, line, lineCache, plugin.settings.syntaxStyle, syntaxOpen);
+			const markers = getLineMarkers(lineNumber, line, lineCache, plugin.settings, syntaxOpen);
 			if (markers.length === 0) {
 				continue;
 			}
@@ -238,7 +237,7 @@ function buildDecorations(
 					end,
 					Decoration.replace({
 						widget: new MetadataWidget(
-							result.value,
+							marker.embed ? toEmbedMarkdown(result.value) : result.value,
 							result.targetFile.path,
 							plugin,
 							styleKey,
@@ -254,11 +253,16 @@ function buildDecorations(
 	return {decorations: builder.finish(), dependencies: resolver.dependencies};
 }
 
+// Settings that change how a line parses into markers.
+function getMarkerSyntax(plugin: EmbedMetadataPlugin): string {
+	return `${plugin.settings.syntaxStyle}|${plugin.settings.embedPrefix}`;
+}
+
 function getLineMarkers(
 	lineNumber: number,
 	line: {from: number; text: string},
 	lineCache: Map<number, LineMarkers>,
-	syntaxStyle: SyntaxStyle,
+	settings: EmbedMetadataPlugin["settings"],
 	syntaxOpen: string
 ): MetadataMarker[] {
 	const cached = lineCache.get(lineNumber);
@@ -268,7 +272,7 @@ function getLineMarkers(
 
 	const markers: MetadataMarker[] = [];
 	if (line.text.includes(syntaxOpen)) {
-		markers.push(...findMetadataMarkers(line.text, syntaxStyle));
+		markers.push(...findMetadataMarkers(line.text, settings.syntaxStyle, settings.embedPrefix));
 	}
 
 	lineCache.set(lineNumber, {text: line.text, markers});
@@ -617,8 +621,7 @@ function getRevealedMarkerKey(
 	lineCache: Map<number, LineMarkers>
 ): string {
 	const doc = view.state.doc;
-	const syntaxStyle = plugin.settings.syntaxStyle;
-	const syntaxOpen = getSyntaxOpen(syntaxStyle);
+	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const markerKeys = new Set<string>();
 
 	for (const sel of view.state.selection.ranges) {
@@ -632,7 +635,7 @@ function getRevealedMarkerKey(
 			const endLine = doc.lineAt(to).number;
 			for (let lineNumber = doc.lineAt(from).number; lineNumber <= endLine; lineNumber += 1) {
 				const line = doc.line(lineNumber);
-				for (const marker of getLineMarkers(lineNumber, line, lineCache, syntaxStyle, syntaxOpen)) {
+				for (const marker of getLineMarkers(lineNumber, line, lineCache, plugin.settings, syntaxOpen)) {
 					const start = line.from + marker.from;
 					const end = line.from + marker.to;
 					if (selectionTouchesMarker(sel, start, end)) {

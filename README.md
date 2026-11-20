@@ -58,6 +58,10 @@ Review date: {{[Website project](Projects/Website.md)@review_date}}
 > removed in a future release**, because Obsidian indexes the trailing `#status`
 > as a tag. Switch existing references to `@` to avoid stray tags.
 
+Prefix a marker with `!` to embed what the property links to, e.g. `![%portrait]`
+with `portrait: "[[image.png]]"` or `portrait: image.png`. Anything Obsidian can
+embed works: images, audio, video, PDFs, notes, and URLs.
+
 The syntax markers are replaced in reading view and live preview. Source mode keeps
 the syntax as plain text. If a local key, target note, or target property is
 missing, the marker is left unchanged. Inline code and code blocks are ignored in
@@ -83,6 +87,7 @@ format: `[%key]` or `{{key}}`.
 
 - Optional case-insensitive key lookup
 - Optional built-in keys (enabled by default; frontmatter keys take priority)
+- Optional `!` embeds (enabled by default)
 - Optional outline rendering (experimental; replaces markers in the Outline sidebar)
 - Date and time format for Date and Date & time properties and `ctime`/`mtime` (default: as written)
 - Show checkbox properties as checkboxes instead of `true`/`false` (default: on)

@@ -134,7 +134,7 @@ function updateOutlineView(
 
 		let next = raw;
 		if (raw.includes(syntaxOpen)) {
-			const markers = findMetadataMarkers(raw, plugin.settings.syntaxStyle);
+			const markers = findMetadataMarkers(raw, plugin.settings.syntaxStyle, plugin.settings.embedPrefix);
 			if (markers.length > 0) {
 				let lastIndex = 0;
 				const parts: string[] = [];

@@ -7,6 +7,7 @@ export interface EmbedMetadataSettings {
 	syntaxStyle: SyntaxStyle;
 	caseInsensitiveKeys: boolean;
 	builtInKeysEnabled: boolean;
+	embedPrefix: boolean;
 	dateFormat: DateFormat;
 	timeFormat: TimeFormat;
 	booleanCheckboxes: boolean;
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS: EmbedMetadataSettings = {
 	syntaxStyle: "brackets",
 	caseInsensitiveKeys: false,
 	builtInKeysEnabled: true,
+	embedPrefix: true,
 	...DEFAULT_DATE_DISPLAY,
 	booleanCheckboxes: true,
 	renderOutline: false,
@@ -66,6 +68,7 @@ export function normalizeSettings(data: unknown): EmbedMetadataSettings {
 		syntaxStyle,
 		caseInsensitiveKeys: booleanSetting("caseInsensitiveKeys", DEFAULT_SETTINGS.caseInsensitiveKeys),
 		builtInKeysEnabled: booleanSetting("builtInKeysEnabled", DEFAULT_SETTINGS.builtInKeysEnabled),
+		embedPrefix: booleanSetting("embedPrefix", DEFAULT_SETTINGS.embedPrefix),
 		dateFormat: optionSetting("dateFormat", DATE_FORMATS, DEFAULT_SETTINGS.dateFormat),
 		timeFormat: optionSetting("timeFormat", TIME_FORMATS, DEFAULT_SETTINGS.timeFormat),
 		booleanCheckboxes: booleanSetting("booleanCheckboxes", DEFAULT_SETTINGS.booleanCheckboxes),
@@ -119,6 +122,7 @@ type CompatibleSettingGroup = {
 type BooleanSettingKey =
 	| "caseInsensitiveKeys"
 	| "builtInKeysEnabled"
+	| "embedPrefix"
 	| "booleanCheckboxes"
 	| "renderOutline"
 	| "bold"
@@ -170,6 +174,11 @@ export class EmbedMetadataSettingTab extends PluginSettingTab {
 						"builtInKeysEnabled",
 						"Built-in keys",
 						"Enable built-ins like {{filename}}, {{path}}, and {{mtime}}."
+					),
+					this.createToggleDefinition(
+						"embedPrefix",
+						"Embeds with !",
+						"Prefix a marker with ! ({{key}} becomes !{{key}}) to embed what the property links to."
 					),
 					{
 						id: "remoteSyntaxInfo",
