@@ -1,7 +1,10 @@
 // Inline markdown renderer for metadata values (links, embeds, etc.)
 import {App, Component, MarkdownRenderer} from "obsidian";
 
-const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|https?:\/\/|\n)/;
+// Values without any of these hints skip MarkdownRenderer and render as plain
+// text. Inline HTML (`<br>`, `<span …>`, `</b>`) needs the renderer too; a bare
+// `<` (e.g. `a < b`) does not look like a tag and stays on the fast path.
+const markdownHintRegex = /(\[\[|!\[\[|`|\*|_|~|\[[^\]]+\]\([^)]+\)|#|https?:\/\/|\n|<\/?[a-zA-Z][^>]*>)/;
 
 type ActiveRender = {
 	parent: Component;
@@ -118,6 +121,10 @@ export function renderInlineMarkdownText(
 			return;
 		}
 
+		// `<br>` has no text content; keep the words on either side apart.
+		for (const br of Array.from(temp.querySelectorAll("br"))) {
+			br.replaceWith(" ");
+		}
 		const text = temp.textContent ?? "";
 		clearActiveRender(el);
 		el.textContent = text;
