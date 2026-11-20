@@ -55,7 +55,8 @@ export function registerMetadataRenderer(
 			plugin.app,
 			file,
 			plugin.settings.caseInsensitiveKeys,
-			plugin.settings.builtInKeysEnabled
+			plugin.settings.builtInKeysEnabled,
+			plugin.settings
 		);
 		const doc = el.ownerDocument;
 		const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
@@ -368,7 +369,8 @@ function refreshRenderedValues(plugin: EmbedMetadataPlugin, changedFile: TFile, 
 					plugin.app,
 					sourceFile instanceof TFile ? sourceFile : viewFile,
 					plugin.settings.caseInsensitiveKeys,
-					plugin.settings.builtInKeysEnabled
+					plugin.settings.builtInKeysEnabled,
+					plugin.settings
 				);
 				resolvers.set(sourcePath, resolver);
 			}

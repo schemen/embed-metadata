@@ -113,7 +113,8 @@ function updateOutlineView(
 		plugin.app,
 		file,
 		plugin.settings.caseInsensitiveKeys,
-		plugin.settings.builtInKeysEnabled
+		plugin.settings.builtInKeysEnabled,
+		plugin.settings
 	);
 	const syntaxOpen = getSyntaxOpen(plugin.settings.syntaxStyle);
 	const items = Array.from(container.querySelectorAll<HTMLElement>(OUTLINE_ITEM_SELECTOR));
