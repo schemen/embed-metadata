@@ -29,6 +29,11 @@ export const DEFAULT_DATE_DISPLAY: DateDisplaySettings = {dateFormat: "asWritten
 // How Obsidian stores Date and Date & time values.
 const STORED_FORMATS = ["YYYY-MM-DD", "YYYY-MM-DDTHH:mm", "YYYY-MM-DDTHH:mm:ss"];
 
+// Obsidian's types import moment's, which the plugin audit does not install, so
+// `moment` is untyped there. Type the few calls made here.
+type DateMoment = {isValid: () => boolean; toDate: () => Date; format: (format: string) => string};
+const toMoment = moment as unknown as (input: string | Date, formats?: string[], strict?: boolean) => DateMoment;
+
 // Property types live in Obsidian's internal metadataTypeManager; it is not in
 // the public API, so a missing manager means "not a date".
 type AppWithPropertyTypes = App & {
@@ -45,7 +50,7 @@ export function formatDateValue(value: string, settings: DateDisplaySettings): s
 	if (settings.dateFormat === "asWritten") {
 		return value;
 	}
-	const date = moment(value, STORED_FORMATS, true);
+	const date = toMoment(value, STORED_FORMATS, true);
 	if (!date.isValid()) {
 		return value;
 	}
@@ -65,9 +70,9 @@ function formatDateTime(date: Date, settings: DateDisplaySettings): string {
 }
 
 function formatDate(date: Date, format: DateFormat): string {
-	return format === "system" ? date.toLocaleDateString() : moment(date).format(format);
+	return format === "system" ? date.toLocaleDateString() : toMoment(date).format(format);
 }
 
 function formatTime(date: Date, format: TimeFormat): string {
-	return format === "system" ? date.toLocaleTimeString([], {timeStyle: "short"}) : moment(date).format(format);
+	return format === "system" ? date.toLocaleTimeString([], {timeStyle: "short"}) : toMoment(date).format(format);
 }
